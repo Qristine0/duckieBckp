@@ -7,19 +7,23 @@ MODEL_PATH = "tasks/object_detection/models/best.onnx"
 
 def NUMBER_FRAMES_SKIPPED() -> int:
     # Higher = run inference less often (cheaper).
-    return 1
+    return 0
 
 
+#  0, 1, 2 - ['duckie', 'truck', 'sign']
 def filter_by_classes(pred_class: int) -> bool:
     """Return False to drop this prediction."""
+    # return pred_class == 0
     return True
 
 
 def filter_by_scores(score: float) -> bool:
     """Confidence in [0.0, 1.0]. Return False to drop low-confidence boxes."""
-    return True
+    return score > 0.5
 
 
 def filter_by_bboxes(bbox: Tuple[int, int, int, int]) -> bool:
     """bbox is (xmin, ymin, xmax, ymax) in pixels. Return False to drop."""
-    return True
+    xmin, ymin, xmax, ymax = bbox
+    area = (xmax - xmin) * (ymax - ymin)
+    return area > 400

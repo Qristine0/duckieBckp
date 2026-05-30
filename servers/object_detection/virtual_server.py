@@ -12,9 +12,12 @@ sys.path.insert(0, project_root)
 import cv2
 from flask import Flask, Response, render_template_string, jsonify, request
 
+
+# !!!!!!! AGENTS AND FUNCTION FROM TASK
 from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent
 from tasks.object_detection.packages.agent import ObjectDetectionAgent, CLASS_NAMES
 from tasks.object_detection.packages.stop_activity import should_stop as student_should_stop
+
 from servers.object_detection.visualization import draw_detections
 from servers.templates.object_detection import OBJECT_DETECTION_TEMPLATE as HTML_TEMPLATE
 
@@ -131,6 +134,7 @@ def visualize(frame_rgb):
         pwm_left, pwm_right = lane_agent.compute_commands(frame_rgb)
 
         should_stop_flag, reason = _should_stop(detections)
+        
         _stopped_by_det = should_stop_flag
         _stop_reason    = reason
 

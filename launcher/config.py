@@ -18,7 +18,17 @@ GODOT_SCENES = {
     'modcon': 'res://scenes/Modconpath.tscn',
     'navigator': 'res://scenes/map_follower.tscn',
     'object_detection': 'res://scenes/lane_detect.tscn',
+    # 'sign_detection': 'res://scenes/sign_detect.tscn',  
+    'sign_detection': 'res://scenes/sign2.tscn',  
 }
+
+# sign_detect - lane_detect + additional things
+
+# lane_follower
+# duckietown_scene
+# testMap
+# DuckieRagdool
+
 
 DEFAULT_WEB_PORT = 5000
 DEFAULT_DEPLOY_PORT = 8000
