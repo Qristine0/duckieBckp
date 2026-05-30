@@ -13,13 +13,10 @@ albedo_texture = ExtResource("3_eqtro")
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_4uon1"]
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_7gp57"]
-size = Vector3(2.0014038, 0.01751709, 1.9967651)
-
 [node name="MapFollower" type="Node3D" unique_id=1690158760]
 
 [node name="DuckieBot" parent="." unique_id=865415826 instance=ExtResource("1_h126k")]
-transform = Transform3D(-0.99948883, 0, -0.03196899, 0, 1, 0, 0.03196899, 0, -0.99948883, 4.154852, 0.044506483, 3.3970077)
+transform = Transform3D(0.992463, 0, -0.122544974, 0, 1, 0, 0.122544974, 0, 0.992463, 5.5502377, 0.044506483, 4.955968)
 WheelPort = 5011
 CameraPort = 5011
 
@@ -42,10 +39,6 @@ material_override = SubResource("StandardMaterial3D_tkgvi")
 mesh = SubResource("PlaneMesh_4uon1")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D" unique_id=867727638]
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D/StaticBody3D" unique_id=2097804976]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0021057427, -0.007904088, -0.00582888)
-shape = SubResource("BoxShape3D_7gp57")
 
 [node name="KiuPathObj" parent="." unique_id=1908243731 instance=ExtResource("5_du2b5")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.2620525, 0.010445523, 4.8696938)

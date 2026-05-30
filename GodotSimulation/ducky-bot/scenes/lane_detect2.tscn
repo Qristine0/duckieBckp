@@ -69,6 +69,9 @@ transform = Transform3D(0.6373164, -0.09001359, -0.765327, 0, 0.99315435, -0.116
 [node name="VehicleCorected" parent="." unique_id=1056507017 instance=ExtResource("7_fppl5")]
 transform = Transform3D(0.02916032, 0, -0.9995747, 0, 1, 0, 0.9995747, 0, 0.02916032, 5.0262694, 0.046961177, 5.373321)
 
+[node name="VehicleCorected" parent="VehicleCorected" unique_id=616671156 instance=ExtResource("7_fppl5")]
+transform = Transform3D(0.029160349, 0, -0.99957544, 0, 1, 0, 0.99957544, 0, 0.029160349, -0.7548108, -0.0020500533, 1.373146)
+
 [node name="Duckie2" parent="." unique_id=275832261 instance=ExtResource("6_65y7p")]
 transform = Transform3D(0.6373164, -0.09001359, -0.765327, 0, 0.99315435, -0.11680941, 0.7706022, 0.074444555, 0.6329536, 5.968801, 0.061383232, 4.422494)
 

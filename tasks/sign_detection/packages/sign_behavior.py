@@ -65,9 +65,9 @@ from tasks.sign_detection.packages.april_tag import detect_tags, confirm_tags
 # Tag ID → meaning
 # ---------------------------------------------------------------------------
 class TagID(IntEnum):
-    STOP            = 0
-    YIELD           = 1
-    TURN_LEFT_FWD   = 2
+    STOP            = 2
+    YIELD           = 0   #Yield_creep araa sachiro, checkpathze mainc gamosdis gachereba
+    TURN_LEFT_FWD   = 1
     TURN_LEFT_RIGHT = 3
     TURN_RIGHT_FWD  = 4
     TURN_ALL        = 5
@@ -76,7 +76,8 @@ class TagID(IntEnum):
 # Intersection tags and their permitted directions
 _TAG_TURNS: dict[int, List[str]] = {
     TagID.TURN_LEFT_RIGHT: ["left",  "right"],
-    TagID.TURN_LEFT_FWD:   ["left",  "forward"],
+    # TagID.TURN_LEFT_FWD:   ["left",  "forward"],
+    TagID.TURN_LEFT_FWD:   ["left"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
     TagID.TURN_ALL:        ["left",  "right", "forward"],
 }
@@ -87,14 +88,15 @@ _TAG_TURNS: dict[int, List[str]] = {
 # ---------------------------------------------------------------------------
 class State(IntEnum):
     MOVING      = auto()
-    SLOWING     = auto()   # ramping down (used by both STOP and YIELD paths)
-    YIELD_CREEP = auto()   # yield: creeping forward slowly, watching for cars
-    STOPPED     = auto()   # full stop, holding stop_hold_frames
-    CHECKPATH   = auto()   # sweep left/right to check for cars → POST_STOP
-    POST_STOP   = auto()   # drive straight briefly then → MOVING
-    INTERSECT   = auto()   # pick direction, execute turn manoeuvre
-    EXITING     = auto()   # drive straight to clear intersection → MOVING
-
+    SLOWING     = auto()
+    YIELD_CREEP = auto()
+    STOPPED     = auto()
+    CHECKPATH   = auto()
+    POST_STOP   = auto()
+    INTERSECT   = auto()   # decides direction, enters PRE_TURN or goes straight
+    PRE_TURN    = auto()   # creeps forward before the actual turn
+    TURNING     = auto()   # executes the turn wheel speeds
+    EXITING     = auto()
 
 # ---------------------------------------------------------------------------
 # Config
@@ -111,7 +113,7 @@ class SignBehaviorConfig:
 
     # ── Stop-line hold ────────────────────────────────────────────────────
     # Frames to sit still at the red line before acting (STOP sign)
-    stop_hold_frames: int = 20
+    stop_hold_frames: int = 0
 
     # ── Speed ramp (shared by STOP and YIELD paths) ───────────────────────
     slow_ramp_factor:        float = 0.92
@@ -119,37 +121,51 @@ class SignBehaviorConfig:
 
     # ── YIELD specific ───────────────────────────────────────────────────
     # Minimum creep speed while passing the line under a yield sign.
-    yield_min_speed:    float = 0.30
+    yield_min_speed:    float = 0.1
     # How many frames to creep forward while checking for cars
-    yield_creep_frames: int   = 15
+    yield_creep_frames: int   = 5
 
     # ── CHECKPATH sweep (STOP and YIELD paths) ────────────────────────────
     # Phase A: rotate left  check_left_frames  frames  (look left)
     # Phase B: rotate right check_right_frames frames  (look right, 2x to sweep back)
     # Phase C: rotate left  check_left_frames  frames  (return to forward)
-    check_left_frames:  int   = 5
-    check_right_frames: int   = 5
-    check_turn_speed:   float = 0.10   # in-place rotation speed during sweep
-
+    check_left_frames:  int   = 4
+    check_right_frames: int   = 4
+    check_turn_speed:   float = 0.04   # in-place rotation speed during sweep
+    check_settle_frames: int = 5
+    
+    
     # ── POST_STOP ─────────────────────────────────────────────────────────
     post_stop_frames: int   = 12
     post_stop_speed:  float = 0.2
 
+    
+    # ── Pre-turn forward creep ────────────────────────────────────────────
+    # Right: just enough to cross the line and clear the corner.
+    # Left:  more — needs to reach intersection centre before curving.
+    # Forward: no pre-turn needed.
+    preturn_right_frames: int   = 6
+    preturn_left_frames:  int   = 11
+    preturn_speed:        float = 0.20
+    
     # ── Intersection manoeuvres ───────────────────────────────────────────
-    intersect_forward_frames: int   = 15
-    intersect_left_frames:    int   = 18
-    intersect_right_frames:   int   = 18
+    intersect_forward_frames: int   = 5
+    intersect_left_frames:    int   = 3
+    intersect_right_frames:   int   = 3
     intersect_forward_speed:  Tuple[float, float] = (0.20, 0.20)
     intersect_left_speed:     Tuple[float, float] = (0.00, 0.18)
     intersect_right_speed:    Tuple[float, float] = (0.18, 0.00)
 
     # ── Exiting ───────────────────────────────────────────────────────────
-    exit_frames: int   = 30
-    exit_speed:  float = 0.20
+    # exit_frames: int   = 5
+    exit_frames_forward: int   = 8
+    exit_frames_left:    int   = 8
+    exit_frames_right:   int   = 2
+    exit_speed:          float = 0.20
 
     # ── Vehicle detection ─────────────────────────────────────────────────
     vehicle_class_id:      int   = 1
-    vehicle_min_bbox_area: float = 1500.0
+    vehicle_min_bbox_area: float = 2000.0
 
     # ── AprilTag detector ────────────────────────────────────────────────
     min_margin:         float = 10.0
@@ -412,6 +428,12 @@ class SignBehaviorFSM:
         elif self.state == State.INTERSECT:
             return self._intersect_step(base_left, base_right)
 
+        elif self.state == State.PRE_TURN:
+            return self._preturn_step(base_left, base_right)
+
+        elif self.state == State.TURNING:
+            return self._turning_step(base_left, base_right)
+        
         # ── EXITING ─────────────────────────────────────────────────────────
         elif self.state == State.EXITING:
             return self._exiting_step(base_left, base_right)
@@ -430,25 +452,49 @@ class SignBehaviorFSM:
         spd = self.cfg.check_turn_speed
         cl  = self.cfg.check_left_frames
         cr  = self.cfg.check_right_frames
+        cs  = self.cfg.check_settle_frames
         c   = self._check_counter
 
-        if c < cl:                      # Phase A: look left
+        phase_a_end    = cl                          # rotate left
+        phase_a_settle = cl + cs                     # hold at left
+        phase_b_end    = phase_a_settle + 2 * cr     # sweep right
+        phase_b_settle = phase_b_end + cs            # hold at right
+        phase_c_end    = phase_b_settle + cl         # return to forward
+        phase_c_settle = phase_c_end + cs            # hold at forward (final settle)
+
+        if c < phase_a_end:                          # Phase A: rotate left
             if self._vehicle_detected(detections):
                 self._vehicle_seen_left = True
             self._check_counter += 1
             return -spd, spd
 
-        elif c < cl + 2 * cr:           # Phase B: sweep right
+        elif c < phase_a_settle:                     # Settle at left
+            if self._vehicle_detected(detections):
+                self._vehicle_seen_left = True
+            self._check_counter += 1
+            return 0.0, 0.0
+
+        elif c < phase_b_end:                        # Phase B: sweep right
             if self._vehicle_detected(detections):
                 self._vehicle_seen_right = True
             self._check_counter += 1
             return spd, -spd
 
-        elif c < 2 * (cl + cr):         # Phase C: return to forward
+        elif c < phase_b_settle:                     # Settle at right
+            if self._vehicle_detected(detections):
+                self._vehicle_seen_right = True
+            self._check_counter += 1
+            return 0.0, 0.0
+
+        elif c < phase_c_end:                        # Phase C: return to forward
             self._check_counter += 1
             return -spd, spd
 
-        else:                           # Sweep complete
+        # elif c < phase_c_settle:                     # Settle at forward
+        #     self._check_counter += 1
+        #     return 0.0, 0.0
+
+        else:                                        # Sweep complete
             if self._vehicle_seen_left or self._vehicle_seen_right:
                 print("[SignBehavior] vehicle seen during sweep — redoing check")
                 self._check_counter      = 0
@@ -456,34 +502,54 @@ class SignBehaviorFSM:
                 self._vehicle_seen_right = False
                 return 0.0, 0.0
 
-            # Path clear — drive forward
             self._turn_counter = 0
             self.state         = State.POST_STOP
             print("[SignBehavior] >>> path clear — POST_STOP")
             return 0.0, 0.0
-
     # ------------------------------------------------------------------
     # INTERSECT
     # ------------------------------------------------------------------
 
-    def _intersect_step(
-        self,
-        base_left:  float,
-        base_right: float,
-    ) -> Tuple[float, float]:
+    def _intersect_step(self, base_left, base_right):
         turn = self._chosen_turn or "forward"
+        self._turn_counter = 0
 
-        frames_map = {
-            "forward": self.cfg.intersect_forward_frames,
-            "left":    self.cfg.intersect_left_frames,
-            "right":   self.cfg.intersect_right_frames,
-        }
+        if turn in ("left", "right"):
+            self.state = State.PRE_TURN
+            print(f"[SignBehavior] >>> PRE_TURN for '{turn}'")
+            return self.cfg.preturn_speed, self.cfg.preturn_speed
+
+        # forward — no pre-turn, go straight to TURNING
+        self.state = State.TURNING
+        print(f"[SignBehavior] >>> TURNING 'forward' (no pre-turn)")
+        return self.cfg.intersect_forward_speed
+
+    def _preturn_step(self, base_left, base_right):
+        turn = self._chosen_turn or "forward"
+        total = (self.cfg.preturn_right_frames if turn == "right"
+                 else self.cfg.preturn_left_frames)
+
+        if self._turn_counter < total:
+            self._turn_counter += 1
+            return self.cfg.preturn_speed, self.cfg.preturn_speed
+
+        self._turn_counter = 0
+        self.state = State.TURNING
+        print(f"[SignBehavior] >>> PRE_TURN done — TURNING '{turn}'")
+        return 0.0, 0.0
+
+    def _turning_step(self, base_left, base_right):
+        turn = self._chosen_turn or "forward"
         speeds_map = {
             "forward": self.cfg.intersect_forward_speed,
             "left":    self.cfg.intersect_left_speed,
             "right":   self.cfg.intersect_right_speed,
         }
-
+        frames_map = {
+            "forward": self.cfg.intersect_forward_frames,
+            "left":    self.cfg.intersect_left_frames,
+            "right":   self.cfg.intersect_right_frames,
+        }
         total = frames_map.get(turn, self.cfg.intersect_forward_frames)
 
         if self._turn_counter < total:
@@ -491,21 +557,26 @@ class SignBehaviorFSM:
             return speeds_map.get(turn, (base_left, base_right))
 
         self._turn_counter = 0
-        self.state         = State.EXITING
-        print(f"[SignBehavior] >>> INTERSECT '{turn}' done — "
-              f"EXITING ({self.cfg.exit_frames} frames)")
+        self.state = State.EXITING
+        print(f"[SignBehavior] >>> TURNING '{turn}' done — EXITING")
         return base_left, base_right
-
+    
     # ------------------------------------------------------------------
     # EXITING
     # ------------------------------------------------------------------
-
     def _exiting_step(
         self,
         base_left:  float,
         base_right: float,
     ) -> Tuple[float, float]:
-        if self._turn_counter < self.cfg.exit_frames:
+        frames_map = {
+            "forward": self.cfg.exit_frames_forward,
+            "left":    self.cfg.exit_frames_left,
+            "right":   self.cfg.exit_frames_right,
+        }
+        total = frames_map.get(self._chosen_turn or "forward", self.cfg.exit_frames_forward)
+
+        if self._turn_counter < total:
             self._turn_counter += 1
             return self.cfg.exit_speed, self.cfg.exit_speed
 

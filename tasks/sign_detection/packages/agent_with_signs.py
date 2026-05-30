@@ -41,7 +41,11 @@ class LaneServoingAgentWithSigns(LaneServoingAgent):
 
     def __init__(self, config_path: str = None, sign_config: SignBehaviorConfig = None):
         super().__init__(config_path=config_path)
-        self._sign_fsm = SignBehaviorFSM(config=sign_config or SignBehaviorConfig())
+
+        cfg = sign_config or SignBehaviorConfig()
+        self._sign_fsm = SignBehaviorFSM(
+            config   = cfg
+        )
 
     # ------------------------------------------------------------------
     # Override compute_commands

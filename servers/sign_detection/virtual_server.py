@@ -12,11 +12,12 @@ sys.path.insert(0, project_root)
 import cv2
 from flask import Flask, Response, render_template_string, jsonify, request
 
-# !!!!!!! AGENTS AND FUNCTION FROM TASK
 # from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent
 
 from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWithSigns as LaneServoingAgent
 from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
+
+
 # (the rest of the file sees the same name, so nothing else needs changing there)
  
  
@@ -359,14 +360,18 @@ def main():
     print('=' * 60)
 
     print('\n[1/4] Creating lane agent...')
+    
+    
+       
+    
     lane_agent = LaneServoingAgent(
         sign_config=SignBehaviorConfig(
-        stop_hold_frames   = 10,
-        slow_ramp_factor   = 0.82,
-        tag_confirm_frames = 1,
-        min_margin         = 10.0,
+            stop_hold_frames   = 8,
+            slow_ramp_factor   = 0.82,
+            tag_confirm_frames = 1,
+            min_margin         = 10.0,
+        )
     )
-)
 
     print(f'  p_gain={lane_agent.p_gain}, d_gain={lane_agent.d_gain}, speed={lane_agent.base_speed}')
 
