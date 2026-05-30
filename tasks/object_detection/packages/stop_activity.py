@@ -37,7 +37,7 @@ def should_stop(detections: List[Detection], img_size: int) -> Tuple[bool, str]:
             distance_ratio = y2 / img_size
 
             # Safe distance threshold before the bumper goes underneath
-            STOP_THRESHOLD = 0.6
+            STOP_THRESHOLD = 0.45
 
             if distance_ratio >= STOP_THRESHOLD or box_w > (0.19 * img_size):
                 stop = True
