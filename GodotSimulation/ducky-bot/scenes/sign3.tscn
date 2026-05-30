@@ -1,9 +1,10 @@
-[gd_scene format=3 uid="uid://cqumoqttasr0a"]
+[gd_scene format=3 uid="uid://be7jlqsqit30q"]
 
 [ext_resource type="PackedScene" uid="uid://by8pqr474iaqj" path="res://scenes/duckie_bot.tscn" id="1_h126k"]
 [ext_resource type="Environment" uid="uid://xlfv0dsmbfcm" path="res://Environment.tres" id="2_t8tjl"]
 [ext_resource type="Texture2D" uid="uid://d3w6b510itg4t" path="res://scenes/sign.png" id="3_eqtro"]
 [ext_resource type="PackedScene" uid="uid://3d3mqjeeyhw6" path="res://scenes/IntroductionBase.tscn" id="5_du2b5"]
+[ext_resource type="PackedScene" uid="uid://cghelvr8fx5bv" path="res://models/VehicleCorected.glb" id="5_rbjxx"]
 
 [sub_resource type="WorldBoundaryShape3D" id="WorldBoundaryShape3D_b05od"]
 
@@ -51,3 +52,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.2620525, 0.010445523, 4.869
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1342242373]
 transform = Transform3D(1, 0, 0, 0, 0.0074698986, 0.9999721, 0, -0.9999721, 0.0074698986, -1.0819607, 10.15756, 0)
+
+[node name="VehicleCorected3" parent="." unique_id=208886325 instance=ExtResource("5_rbjxx")]
+transform = Transform3D(0.0025657117, 0, 0.9999968, 0, 1, 0, -0.9999968, 0, 0.0025657117, 4.9976892, 0.046961177, 3.2203584)

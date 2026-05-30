@@ -359,7 +359,6 @@ def main():
     print('=' * 60)
 
     print('\n[1/4] Creating lane agent...')
-    # lane_agent = LaneServoingAgent()
     lane_agent = LaneServoingAgent(
         sign_config=SignBehaviorConfig(
         stop_hold_frames   = 10,

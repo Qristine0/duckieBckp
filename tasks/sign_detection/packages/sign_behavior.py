@@ -62,8 +62,8 @@ from pupil_apriltags import Detector as _Detector
 # Tag ID → meaning
 # ---------------------------------------------------------------------------
 class TagID(IntEnum):
-    STOP            = 1
-    TURN_LEFT_FWD   = 2
+    STOP            = 9
+    TURN_LEFT_FWD   = 1
     YIELD           = 7
     TURN_LEFT_RIGHT = 3
     TURN_RIGHT_FWD  = 4
@@ -74,6 +74,7 @@ class TagID(IntEnum):
 _TAG_TURNS: dict[int, List[str]] = {
     TagID.TURN_LEFT_RIGHT: ["left",  "right"],
     TagID.TURN_LEFT_FWD:   ["left",  "forward"],
+    # TagID.TURN_LEFT_FWD:   ["left"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
     TagID.TURN_ALL:        ["left",  "right", "forward"],
 }

@@ -19,7 +19,8 @@ GODOT_SCENES = {
     'navigator': 'res://scenes/map_follower.tscn',
     'object_detection': 'res://scenes/lane_detect.tscn',
     # 'sign_detection': 'res://scenes/sign_detect.tscn',  
-    'sign_detection': 'res://scenes/sign2.tscn',  
+    # 'sign_detection': 'res://scenes/sign2.tscn',  
+    'sign_detection': 'res://scenes/sign3.tscn',  
 }
 
 # sign_detect - lane_detect + additional things
