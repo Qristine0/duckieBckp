@@ -4,11 +4,11 @@ sign_behavior.py
 AprilTag-based sign detection and intersection state machine for Duckiebot.
 
 Tag ID assignments (tag36h11 family):
-    0  -> STOP             : full stop before red line, check for cars,
-                             if clear drive forward post_stop_frames, resume
-    1  -> TURN_LEFT_FWD    : intersection allows left or forward
-    2  -> YIELD            : slow down at red line; if car seen → full stop
-                             then post-stop forward; if clear → just continue
+    0  -> STOP             : full stop before red line, sweep left/right for
+                             cars, if clear drive forward post_stop_frames, resume
+    1  -> YIELD            : slow down at red line; if car seen → full stop +
+                             sweep; if clear → sweep then post-stop forward
+    2  -> TURN_LEFT_FWD    : intersection allows left or forward
     3  -> TURN_LEFT_RIGHT  : intersection allows left or right
     4  -> TURN_RIGHT_FWD   : intersection allows right or forward
     5  -> TURN_ALL         : intersection allows all directions
@@ -19,8 +19,10 @@ MOVING      : normal lane-following; signs saved passively
 SLOWING     : ramp speed toward zero (STOP path) or toward yield_min_speed
               (YIELD path)
 YIELD_CREEP : yield path — moving slowly past the red line while checking
-              for cars; car seen → STOPPED; none seen → POST_STOP
+              for cars; car seen → STOPPED; none seen → CHECKPATH
 STOPPED     : halted, waiting stop_hold_frames
+CHECKPATH   : sweep left then right to check for oncoming cars;
+              car seen → redo sweep; clear → POST_STOP
 POST_STOP   : drive straight forward post_stop_frames frames → MOVING
 INTERSECT   : pick a random permitted direction and execute the turn manoeuvre
               (no car-check, no stop); done → EXITING
@@ -56,15 +58,16 @@ from typing import List, Optional, Tuple
 import cv2
 import numpy as np
 from pupil_apriltags import Detector as _Detector
-
+from tasks.sign_detection.packages.red_line_detection import detect_red_line
+from tasks.sign_detection.packages.april_tag import detect_tags, confirm_tags
 
 # ---------------------------------------------------------------------------
 # Tag ID → meaning
 # ---------------------------------------------------------------------------
 class TagID(IntEnum):
-    STOP            = 9
-    TURN_LEFT_FWD   = 1
-    YIELD           = 7
+    STOP            = 0
+    YIELD           = 1
+    TURN_LEFT_FWD   = 2
     TURN_LEFT_RIGHT = 3
     TURN_RIGHT_FWD  = 4
     TURN_ALL        = 5
@@ -74,7 +77,6 @@ class TagID(IntEnum):
 _TAG_TURNS: dict[int, List[str]] = {
     TagID.TURN_LEFT_RIGHT: ["left",  "right"],
     TagID.TURN_LEFT_FWD:   ["left",  "forward"],
-    # TagID.TURN_LEFT_FWD:   ["left"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
     TagID.TURN_ALL:        ["left",  "right", "forward"],
 }
@@ -88,6 +90,7 @@ class State(IntEnum):
     SLOWING     = auto()   # ramping down (used by both STOP and YIELD paths)
     YIELD_CREEP = auto()   # yield: creeping forward slowly, watching for cars
     STOPPED     = auto()   # full stop, holding stop_hold_frames
+    CHECKPATH   = auto()   # sweep left/right to check for cars → POST_STOP
     POST_STOP   = auto()   # drive straight briefly then → MOVING
     INTERSECT   = auto()   # pick direction, execute turn manoeuvre
     EXITING     = auto()   # drive straight to clear intersection → MOVING
@@ -99,7 +102,7 @@ class State(IntEnum):
 @dataclass
 class SignBehaviorConfig:
     # ── Red-line detection ────────────────────────────────────────────────
-    red_strip_frac: float = 0.35
+    red_strip_frac: float = 0.50
     red_pixel_frac: float = 0.03
     red_hsv_low1:  Tuple[int, int, int] = (0,   120,  80)
     red_hsv_high1: Tuple[int, int, int] = (10,  255, 255)
@@ -116,20 +119,23 @@ class SignBehaviorConfig:
 
     # ── YIELD specific ───────────────────────────────────────────────────
     # Minimum creep speed while passing the line under a yield sign.
-    # The robot slows to this speed (does NOT stop) and holds it while
-    # scanning for vehicles.
     yield_min_speed:    float = 0.30
     # How many frames to creep forward while checking for cars
     yield_creep_frames: int   = 15
 
+    # ── CHECKPATH sweep (STOP and YIELD paths) ────────────────────────────
+    # Phase A: rotate left  check_left_frames  frames  (look left)
+    # Phase B: rotate right check_right_frames frames  (look right, 2x to sweep back)
+    # Phase C: rotate left  check_left_frames  frames  (return to forward)
+    check_left_frames:  int   = 5
+    check_right_frames: int   = 5
+    check_turn_speed:   float = 0.10   # in-place rotation speed during sweep
+
     # ── POST_STOP ─────────────────────────────────────────────────────────
-    # Used after both STOP sign and YIELD-with-car-detected paths.
-    post_stop_frames: int   = 10
+    post_stop_frames: int   = 12
     post_stop_speed:  float = 0.2
 
     # ── Intersection manoeuvres ───────────────────────────────────────────
-    # Frames and wheel speeds for each direction.
-    # Tune these to match your robot's geometry.
     intersect_forward_frames: int   = 15
     intersect_left_frames:    int   = 18
     intersect_right_frames:   int   = 18
@@ -162,22 +168,22 @@ class SignBehaviorFSM:
     STOP sign flow
     --------------
     MOVING → (red line) → SLOWING → STOPPED (hold) →
-        POST_STOP (drive forward briefly) → MOVING
+        CHECKPATH (sweep left/right) → POST_STOP → MOVING
 
-    YIELD sign flow — no car
-    ------------------------
+    YIELD sign flow — no car during creep
+    --------------------------------------
     MOVING → (red line) → SLOWING (to yield_min_speed) →
-        YIELD_CREEP (slow forward, watching) → POST_STOP → MOVING
+        YIELD_CREEP (slow forward, watching) → CHECKPATH → POST_STOP → MOVING
 
     YIELD sign flow — car detected during creep
     -------------------------------------------
-    … → YIELD_CREEP → STOPPED (full stop, hold) → POST_STOP → MOVING
+    … → YIELD_CREEP → STOPPED (full stop, hold) → CHECKPATH → POST_STOP → MOVING
 
     Intersection sign flow
     ----------------------
     MOVING → (red line) → INTERSECT (pick direction, execute turn) →
         EXITING (drive straight) → MOVING
-    No car check, no hold.  Red line just tells the robot it has arrived.
+    No car check, no hold.
     """
 
     def __init__(self, config: SignBehaviorConfig = None):
@@ -195,18 +201,21 @@ class SignBehaviorFSM:
 
         # Per-state counters
         self._hold_counter:  int = 0
-        self._turn_counter:  int = 0   # used by INTERSECT / EXITING / POST_STOP
-        self._creep_counter: int = 0   # used by YIELD_CREEP
+        self._turn_counter:  int = 0   # INTERSECT / EXITING / POST_STOP
+        self._creep_counter: int = 0   # YIELD_CREEP
+        self._check_counter: int = 0   # CHECKPATH sweep
+
+        # CHECKPATH vehicle flags
+        self._vehicle_seen_left:  bool = False
+        self._vehicle_seen_right: bool = False
 
         # Intersection direction
         self._possible_turns: List[str]     = []
         self._chosen_turn:    Optional[str] = None
 
         # Speed ramp state
-        self._slow_factor:  float = 1.0
-        # Target for the SLOWING ramp:
-        #   0.0  → full stop  (STOP sign)
-        #   yield_min_speed → creep speed (YIELD sign)
+        self._slow_factor: float = 1.0
+        # 0.0 → full stop (STOP sign), yield_min_speed → creep (YIELD sign)
         self._slow_target: float = 0.0
 
         # Red-line lockout
@@ -228,10 +237,10 @@ class SignBehaviorFSM:
     ) -> Tuple[float, float]:
         detections = detections or []
 
-        tags      = self._detect_tags(frame_rgb)
-        confirmed = self._confirm_tags(tags)
+        tags      = detect_tags(self, frame_rgb)
+        confirmed = confirm_tags(self, tags)
 
-        red_line = False if self._red_line_locked else bool(self._detect_red_line(frame_rgb))
+        red_line = False if self._red_line_locked else bool(detect_red_line(self, frame_rgb))
 
         left, right = self._fsm_step(confirmed, detections, red_line, base_left, base_right)
 
@@ -246,6 +255,7 @@ class SignBehaviorFSM:
             "slow_factor":    round(float(self._slow_factor), 3),
             "hold_counter":   int(self._hold_counter),
             "creep_counter":  int(self._creep_counter),
+            "check_counter":  int(self._check_counter),
             "turn_counter":   int(self._turn_counter),
         }
         return left, right
@@ -253,72 +263,6 @@ class SignBehaviorFSM:
     @property
     def state_name(self) -> str:
         return self.state.name
-
-    # ------------------------------------------------------------------
-    # Red-line detection  (unchanged from original)
-    # ------------------------------------------------------------------
-
-    def _detect_red_line(self, frame_rgb: np.ndarray) -> bool:
-        h, w    = frame_rgb.shape[:2]
-        strip_h = max(2, int(h * self.cfg.red_strip_frac))
-        strip   = frame_rgb[h - strip_h:, :]
-
-        hsv = cv2.cvtColor(strip, cv2.COLOR_RGB2HSV)
-        lo1 = np.array(self.cfg.red_hsv_low1,  dtype=np.uint8)
-        hi1 = np.array(self.cfg.red_hsv_high1, dtype=np.uint8)
-        lo2 = np.array(self.cfg.red_hsv_low2,  dtype=np.uint8)
-        hi2 = np.array(self.cfg.red_hsv_high2, dtype=np.uint8)
-        mask = cv2.inRange(hsv, lo1, hi1) | cv2.inRange(hsv, lo2, hi2)
-
-        mid            = strip_h // 2
-        far_mask       = mask[:mid, :]
-        far_fraction   = float(far_mask.sum()) / (255.0 * mid * w)
-        far_threshold  = self.cfg.red_pixel_frac * 0.5
-        near_mask      = mask[mid:, :]
-        near_fraction  = float(near_mask.sum()) / (255.0 * (strip_h - mid) * w)
-        near_threshold = self.cfg.red_pixel_frac
-
-        detected = bool(far_fraction >= far_threshold or near_fraction >= near_threshold)
-        if detected:
-            print(f"[SignBehavior] red line — "
-                  f"far={far_fraction:.3f}(thr={far_threshold:.3f}) "
-                  f"near={near_fraction:.3f}(thr={near_threshold:.3f})")
-        return detected
-
-    # ------------------------------------------------------------------
-    # AprilTag detection  (unchanged from original)
-    # ------------------------------------------------------------------
-
-    def _detect_tags(self, frame_rgb: np.ndarray) -> list:
-        gray   = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
-        params = self.cfg.camera_params
-        try:
-            tags = (
-                self._detector.detect(
-                    gray, estimate_tag_pose=True,
-                    camera_params=params, tag_size=self.cfg.tag_size_m,
-                ) if params else self._detector.detect(gray)
-            )
-        except Exception as e:
-            print(f"[SignBehavior] AprilTag error: {e}")
-            return []
-
-        filtered = [t for t in tags if t.decision_margin >= self.cfg.min_margin]
-        if filtered:
-            print(f"[SignBehavior] tags visible: {[t.tag_id for t in filtered]}")
-        return filtered
-
-    def _confirm_tags(self, raw_tags: list) -> List[int]:
-        seen_ids = {t.tag_id for t in raw_tags}
-        for k in [k for k in self._tag_buffer if k not in seen_ids]:
-            del self._tag_buffer[k]
-        for tid in seen_ids:
-            self._tag_buffer[tid] = self._tag_buffer.get(tid, 0) + 1
-        confirmed = [tid for tid, cnt in self._tag_buffer.items()
-                     if cnt >= self.cfg.tag_confirm_frames]
-        if confirmed:
-            print(f"[SignBehavior] confirmed tags: {confirmed}")
-        return confirmed
 
     # ------------------------------------------------------------------
     # FSM core
@@ -360,7 +304,7 @@ class SignBehaviorFSM:
                 tag = self._saved_tag
 
                 if tag in _TAG_TURNS:
-                    # ── Intersection: pick direction immediately, no stop needed
+                    # Intersection: pick direction immediately, no stop/check
                     self._possible_turns = _TAG_TURNS[tag]
                     self._chosen_turn    = self._pick_turn()
                     self._turn_counter   = 0
@@ -370,7 +314,7 @@ class SignBehaviorFSM:
                           f"(from tag {tag}, options {self._possible_turns})")
 
                 elif tag == int(TagID.YIELD):
-                    # ── Yield: ramp down to creep speed, then watch for cars
+                    # Yield: ramp down to creep speed, then watch for cars
                     self._slow_factor  = 1.0
                     self._slow_target  = self.cfg.yield_min_speed
                     self._saved_tag    = None
@@ -378,7 +322,7 @@ class SignBehaviorFSM:
                     print("[SignBehavior] >>> YIELD — slowing to creep speed")
 
                 else:
-                    # ── STOP sign (tag 0) or no tag: full stop
+                    # STOP sign (tag 0) or no tag: full stop
                     self._slow_factor  = 1.0
                     self._slow_target  = 0.0
                     self._saved_tag    = None
@@ -391,14 +335,10 @@ class SignBehaviorFSM:
         # ── SLOWING ─────────────────────────────────────────────────────────
         elif self.state == State.SLOWING:
             target = self._slow_target
-
-            # Ramp the factor down
             self._slow_factor *= self.cfg.slow_ramp_factor
-
-            # Compute speeds — floor at the target fraction of base speeds
-            factor    = max(self._slow_factor, target)
-            left      = base_left  * factor
-            right     = base_right * factor
+            factor = max(self._slow_factor, target)
+            left   = base_left  * factor
+            right  = base_right * factor
 
             if target == 0.0:
                 # STOP path: wait until essentially stopped
@@ -409,7 +349,7 @@ class SignBehaviorFSM:
                     print("[SignBehavior] >>> STOPPED at red line")
                     return 0.0, 0.0
             else:
-                # YIELD path: wait until we've ramped to (near) creep speed
+                # YIELD path: wait until ramped to creep speed
                 if self._slow_factor <= target + 0.02:
                     self._creep_counter = 0
                     self.state          = State.YIELD_CREEP
@@ -421,23 +361,23 @@ class SignBehaviorFSM:
 
         # ── YIELD_CREEP ──────────────────────────────────────────────────────
         elif self.state == State.YIELD_CREEP:
-            # Move slowly forward while watching for vehicles
             if self._creep_counter < self.cfg.yield_creep_frames:
                 self._creep_counter += 1
                 if self._vehicle_detected(detections):
-                    # Car seen — come to a full stop, treat like STOP sign
+                    # Car seen — full stop, then sweep
                     self._hold_counter = 0
                     self.state         = State.STOPPED
                     print("[SignBehavior] >>> vehicle seen during yield creep — STOPPED")
                     return 0.0, 0.0
-                spd = self.cfg.yield_min_speed
-                return spd, spd
+                return self.cfg.yield_min_speed, self.cfg.yield_min_speed
 
-            # Creep complete, no car seen — drive forward briefly and resume
-            self._turn_counter = 0
-            self.state         = State.POST_STOP
-            print("[SignBehavior] >>> YIELD_CREEP done (no car) — POST_STOP")
-            return self.cfg.yield_min_speed, self.cfg.yield_min_speed
+            # Creep complete, no car — go straight to sweep
+            self._check_counter      = 0
+            self._vehicle_seen_left  = False
+            self._vehicle_seen_right = False
+            self.state               = State.CHECKPATH
+            print("[SignBehavior] >>> YIELD_CREEP done — CHECKPATH")
+            return 0.0, 0.0
 
         # ── STOPPED ─────────────────────────────────────────────────────────
         elif self.state == State.STOPPED:
@@ -445,18 +385,23 @@ class SignBehaviorFSM:
             if self._hold_counter < self.cfg.stop_hold_frames:
                 return 0.0, 0.0
 
-            # Hold complete — drive forward briefly then resume
-            self._turn_counter = 0
-            self.state         = State.POST_STOP
-            print(f"[SignBehavior] >>> POST_STOP — {self.cfg.post_stop_frames} frames forward")
+            # Hold complete — sweep for cars
+            self._check_counter      = 0
+            self._vehicle_seen_left  = False
+            self._vehicle_seen_right = False
+            self.state               = State.CHECKPATH
+            print("[SignBehavior] >>> CHECKPATH — sweeping for cars")
             return 0.0, 0.0
+
+        # ── CHECKPATH ────────────────────────────────────────────────────────
+        elif self.state == State.CHECKPATH:
+            return self._checkpath_step(detections)
 
         # ── POST_STOP ────────────────────────────────────────────────────────
         elif self.state == State.POST_STOP:
             if self._turn_counter < self.cfg.post_stop_frames:
                 self._turn_counter += 1
-                spd = self.cfg.post_stop_speed
-                return spd, spd
+                return self.cfg.post_stop_speed, self.cfg.post_stop_speed
 
             self._red_line_locked = False
             self.state            = State.MOVING
@@ -472,6 +417,50 @@ class SignBehaviorFSM:
             return self._exiting_step(base_left, base_right)
 
         return base_left, base_right
+
+    # ------------------------------------------------------------------
+    # CHECKPATH
+    # ------------------------------------------------------------------
+    # 3-phase sweep so the robot returns to its original heading:
+    #   Phase A (0 → cl)             : rotate LEFT  (look left)
+    #   Phase B (cl → cl + 2*cr)     : rotate RIGHT (sweep right, 2x to return)
+    #   Phase C (cl+2*cr → 2*(cl+cr)): rotate LEFT  (return to forward)
+
+    def _checkpath_step(self, detections: list) -> Tuple[float, float]:
+        spd = self.cfg.check_turn_speed
+        cl  = self.cfg.check_left_frames
+        cr  = self.cfg.check_right_frames
+        c   = self._check_counter
+
+        if c < cl:                      # Phase A: look left
+            if self._vehicle_detected(detections):
+                self._vehicle_seen_left = True
+            self._check_counter += 1
+            return -spd, spd
+
+        elif c < cl + 2 * cr:           # Phase B: sweep right
+            if self._vehicle_detected(detections):
+                self._vehicle_seen_right = True
+            self._check_counter += 1
+            return spd, -spd
+
+        elif c < 2 * (cl + cr):         # Phase C: return to forward
+            self._check_counter += 1
+            return -spd, spd
+
+        else:                           # Sweep complete
+            if self._vehicle_seen_left or self._vehicle_seen_right:
+                print("[SignBehavior] vehicle seen during sweep — redoing check")
+                self._check_counter      = 0
+                self._vehicle_seen_left  = False
+                self._vehicle_seen_right = False
+                return 0.0, 0.0
+
+            # Path clear — drive forward
+            self._turn_counter = 0
+            self.state         = State.POST_STOP
+            print("[SignBehavior] >>> path clear — POST_STOP")
+            return 0.0, 0.0
 
     # ------------------------------------------------------------------
     # INTERSECT
@@ -501,7 +490,6 @@ class SignBehaviorFSM:
             self._turn_counter += 1
             return speeds_map.get(turn, (base_left, base_right))
 
-        # Manoeuvre done — drive straight to fully clear the intersection
         self._turn_counter = 0
         self.state         = State.EXITING
         print(f"[SignBehavior] >>> INTERSECT '{turn}' done — "
@@ -563,7 +551,9 @@ def draw_sign_debug(bgr: np.ndarray, fsm: SignBehaviorFSM) -> np.ndarray:
         f"Turn:     {d.get('chosen_turn', '-')}",
         f"SlowF:    {d.get('slow_factor', 1.0):.2f}",
         f"Counters: hold={d.get('hold_counter', 0)} "
-        f"creep={d.get('creep_counter', 0)} t={d.get('turn_counter', 0)}",
+        f"creep={d.get('creep_counter', 0)} "
+        f"chk={d.get('check_counter', 0)} "
+        f"t={d.get('turn_counter', 0)}",
     ]
     for line in lines:
         cv2.putText(bgr, line, (10, y),
