@@ -647,7 +647,7 @@ def main():
         print("\n\nShutting down...")
     finally:
         stop_maneuver()
-        shutdown_cleanup(wheels, camera, stop_event)
+        shutdown_cleanup(wheels , camera, stop_event)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ GAINS_FILE = os.path.join(
 )
 
 try:
-    with open(GAINS_FILE, "r") as f:
+    with open(GAINS_FILE, "r" ) as f:
         _g = yaml.safe_load(f) or {}
 except FileNotFoundError:
     _g = {}
