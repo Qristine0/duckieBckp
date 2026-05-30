@@ -238,7 +238,7 @@ def _drive_segment(side_length, stop_ev, timeout=15.0):
     while not stop_ev.is_set() and time.time() < deadline:
         update_odometry_and_path()
 
-        dist = np.sqrt((odometry.x - start_x) ** 2 + (odometry.y - start_y) ** 2)
+        dist = np.sqrt((odometry.x - start_x) * 2 + (odometry.y - start_y) * 2)
         error = side_length - dist
 
         if abs(error) < 0.02:
@@ -270,7 +270,7 @@ def run_straight(distance, stop_ev):
     while not stop_ev.is_set() and time.time() < deadline:
         update_odometry_and_path()
 
-        dist = np.sqrt((odometry.x - start_x) ** 2 + (odometry.y - start_y) ** 2)
+        dist = np.sqrt((odometry.x - start_x) * 2 + (odometry.y - start_y) * 2)
         error = distance - dist
 
         if abs(error) < 0.02:
@@ -291,7 +291,7 @@ def run_straight(distance, stop_ev):
     if wheels:
         wheels.set_wheels_speed(0, 0)
 
-    dist_final = np.sqrt((odometry.x - start_x) ** 2 + (odometry.y - start_y) ** 2)
+    dist_final = np.sqrt((odometry.x - start_x) * 2 + (odometry.y - start_y) * 2)
     with status_lock:
         status['maneuver'] = 'idle'
         if stop_ev.is_set():
@@ -391,7 +391,7 @@ def run_square(side, stop_ev):
     if wheels:
         wheels.set_wheels_speed(0, 0)
 
-    ret_dist = np.sqrt(odometry.x ** 2 + odometry.y ** 2)
+    ret_dist = np.sqrt(odometry.x * 2 + odometry.y * 2)
     with status_lock:
         status['maneuver'] = 'idle'
         status['pid_error_deg'] = 0.0
