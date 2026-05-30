@@ -4,8 +4,10 @@ Detection = Tuple[Tuple[int, int, int, int], float, int]
 
 _stop_counter = 0
 _stop_latch = 0
-_STOP_FRAMES_REQUIRED = 2
-_STOP_LATCH_FRAMES = 3
+
+# FIXED PARAMETERS FOR ANTI-FLICKER LOGIC
+_STOP_FRAMES_REQUIRED = 1  # Stop immediately on the very first detection frame
+_STOP_LATCH_FRAMES = 12  # Crucial: Hold the brakes for 12 frames even if the truck flickers out
 
 
 def should_stop(detections: List[Detection], img_size: int) -> Tuple[bool, str]:
@@ -24,27 +26,35 @@ def should_stop(detections: List[Detection], img_size: int) -> Tuple[bool, str]:
                 continue
             if y2 > 0.45 * img_size and box_h > 18:
                 stop = True
-                reason = f"duckie y2={y2} h={box_h} cx={box_cx:.0f}"
+                reason = f"duckie y2={y2} h={box_h}"
                 break
 
-        # elif cls_id == 1:  # truck
-        #     # trucks are large so require stricter conditions:
-        #     # must be centered, very close (low y2), and a large box
-        #     if box_cx < img_size * 0.20 or box_cx > img_size * 0.80:
-        #         continue
-        #     if y2 > 0.60 * img_size and box_w > 0.15 * img_size:
-        #         stop = True
-        #         reason = f"truck y2={y2} w={box_w} cx={box_cx:.0f}"
-        #         break
+        elif cls_id == 1:  # truck
+            # Relaxed width constraint to catch the truck if it wanders sideways in the frame
+            if box_cx < img_size * 0.15 or box_cx > img_size * 0.85:
+                continue
+
+            distance_ratio = y2 / img_size
+
+            # Safe distance threshold before the bumper goes underneath
+            STOP_THRESHOLD = 0.45
+
+            if distance_ratio >= STOP_THRESHOLD or box_w > (0.19 * img_size):
+                stop = True
+                reason = f"truck SAFE STOP y2={y2} ratio={distance_ratio:.2f} w={box_w}"
+                break
 
     if stop:
         _stop_counter += 1
-        _stop_latch = _STOP_LATCH_FRAMES
+        _stop_latch = _STOP_LATCH_FRAMES  # Lock the brakes down
     else:
-        _stop_counter = 0
+        # CRITICAL FIX: Do NOT clear the stop counter back to 0 instantly if it's flickering!
+        # Slow down the counter clear rate so a single missed frame won't make the robot accelerate.
+        _stop_counter = max(0, _stop_counter - 1)
         _stop_latch = max(0, _stop_latch - 1)
 
+    # If we detected a stop threat recently, or the latch timer is still active, KEEP BRAKING!
     if _stop_counter >= _STOP_FRAMES_REQUIRED or _stop_latch > 0:
-        return True, reason or "latch"
+        return True, reason or "anti-flicker latch active"
 
     return False, ""

@@ -17,7 +17,7 @@ GODOT_SCENES = {
     'introduction': 'res://scenes/introduction.tscn',
     'modcon': 'res://scenes/Modconpath.tscn',
     'navigator': 'res://scenes/map_follower.tscn',
-    'object_detection': 'res://scenes/lane_detect.tscn',
+    'object_detection': 'res://scenes/lane_detect2.tscn',
     # 'sign_detection': 'res://scenes/sign_detect.tscn',  
     'sign_detection': 'res://scenes/sign2.tscn',  
     # 'sign_detection': 'res://scenes/sign3.tscn',  
