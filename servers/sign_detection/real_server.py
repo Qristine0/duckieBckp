@@ -20,9 +20,9 @@ from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
 from tasks.object_detection.packages.agent import ObjectDetectionAgent, CLASS_NAMES
 from tasks.object_detection.packages.stop_activity import should_stop as student_should_stop
 from servers.object_detection.visualization import draw_detections, draw_status_overlay
-from servers.templates.object_detection import OBJECT_DETECTION_TEMPLATE as HTML_TEMPLATE
+# from servers.templates.object_detection import OBJECT_DETECTION_TEMPLATE as HTML_TEMPLATE
 
-# from servers.templates.sign_detection import SIGN_DETECTION_TEMPLATE as HTML_TEMPLATE
+from servers.templates.sign_detection import SIGN_DETECTION_TEMPLATE as HTML_TEMPLATE
 
 from duckiebot.camera_driver import CameraDriver
 from duckiebot.wheel_driver import DaguWheelsDriver
@@ -245,16 +245,16 @@ def main():
         print('[Init] Camera ready')
 
     def _init_agents():
-        global lane_agent, det_agent
+        global lane_agent, det_agent, sign_config
         # lane_agent = LaneServoingAgent()
-    
+        sign_config = SignBehaviorConfig(
+            stop_hold_frames=8,
+            slow_ramp_factor=0.82,
+            tag_confirm_frames=1,
+            min_margin=10.0,
+        )
         lane_agent = LaneServoingAgent(
-            sign_config=SignBehaviorConfig(
-                stop_hold_frames   = 10,
-                slow_ramp_factor   = 0.82,
-                tag_confirm_frames = 1,
-                min_margin         = 10.0,
-            )
+            sign_config
         )
     
         print(f'[Init] Lane agent ready (speed={lane_agent.base_speed})')

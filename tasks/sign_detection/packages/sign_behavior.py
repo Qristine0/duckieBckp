@@ -65,9 +65,9 @@ from tasks.sign_detection.packages.april_tag import detect_tags, confirm_tags
 # Tag ID → meaning
 # ---------------------------------------------------------------------------
 class TagID(IntEnum):
-    STOP            = 1
+    STOP            = 0
     YIELD           = 0   #Yield_creep araa sachiro, checkpathze mainc gamosdis gachereba
-    TURN_LEFT_FWD   = 0
+    TURN_LEFT_FWD   = 1
     TURN_LEFT_RIGHT = 3
     TURN_RIGHT_FWD  = 4
     TURN_ALL        = 5
@@ -77,7 +77,7 @@ class TagID(IntEnum):
 _TAG_TURNS: dict[int, List[str]] = {
     TagID.TURN_LEFT_RIGHT: ["left",  "right"],
     # TagID.TURN_LEFT_FWD:   ["left",  "forward"],
-    TagID.TURN_LEFT_FWD:   ["forward"],
+    TagID.TURN_LEFT_FWD:   ["right"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
     TagID.TURN_ALL:        ["left",  "right", "forward"],
 }
@@ -150,14 +150,14 @@ class SignBehaviorConfig:
     # Right: just enough to cross the line and clear the corner.
     # Left:  more — needs to reach intersection centre before curving.
     # Forward: no pre-turn needed.
-    preturn_right_frames: int   = 7
-    preturn_left_frames:  int   = 11
+    preturn_right_frames: int   = 30
+    preturn_left_frames:  int   = 40
     preturn_speed:        float = 0.20
     
     # ── Intersection manoeuvres ───────────────────────────────────────────
     intersect_forward_frames: int   = 5
-    intersect_left_frames:    int   = 3
-    intersect_right_frames:   int   = 3
+    intersect_left_frames:    int   = 9
+    intersect_right_frames:   int   = 9
     intersect_forward_speed:  Tuple[float, float] = (0.20, 0.20)
     intersect_left_speed:     Tuple[float, float] = (0.00, 0.18)
     intersect_right_speed:    Tuple[float, float] = (0.18, 0.00)

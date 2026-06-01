@@ -13,7 +13,6 @@ import cv2
 from flask import Flask, Response, render_template_string, jsonify, request
 
 
-# !!!!!!! AGENTS AND FUNCTION FROM TASK
 from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent
 from tasks.object_detection.packages.agent import ObjectDetectionAgent, CLASS_NAMES
 from tasks.object_detection.packages.stop_activity import should_stop as student_should_stop
