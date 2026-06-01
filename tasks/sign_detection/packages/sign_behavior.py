@@ -28,7 +28,6 @@ class SignBehaviorFSM:
 
         self._tag_buffer  = {}    # type: Dict[int, int]
         self._saved_tag   = None  # type: Optional[int]
-        self._exit_line_seen = False  # type: bool
 
         self._hold_counter  = 0  # type: int
         self._turn_counter  = 0  # type: int
@@ -239,6 +238,7 @@ class SignBehaviorFSM:
 
         return base_left, base_right
 
+
     # ------------------------------------------------------------------
     # CHECKPATH
     # ------------------------------------------------------------------
@@ -297,6 +297,7 @@ class SignBehaviorFSM:
             print("[SignBehavior] >>> path clear — POST_STOP")
             return 0.0, 0.0
 
+
     # ------------------------------------------------------------------
     # INTERSECT
     # ------------------------------------------------------------------
@@ -349,7 +350,6 @@ class SignBehaviorFSM:
             return speeds_map.get(turn, (base_left, base_right))
 
         self._turn_counter   = 0
-        self._exit_line_seen = False
         self.state           = State.EXITING
         print(f"[SignBehavior] >>> TURNING '{turn}' done — EXITING")
         return base_left, base_right
@@ -358,62 +358,21 @@ class SignBehaviorFSM:
     # EXITING
     # ------------------------------------------------------------------
     def _exiting_step(self, base_left, base_right):
-        # type: (float, float) -> Tuple[float, float]
-        frame_rgb = self._frame_rgb
-
-        if not self._exit_line_seen:
-            if frame_rgb is not None:
-                h, w    = frame_rgb.shape[:2]
-                strip_h = max(2, int(h * self.cfg.red_strip_frac))
-                strip   = frame_rgb[h - strip_h:, :]
-                hsv     = cv2.cvtColor(strip, cv2.COLOR_RGB2HSV)
-                lo1 = np.array(self.cfg.red_hsv_low1, dtype=np.uint8)
-                hi1 = np.array(self.cfg.red_hsv_high1, dtype=np.uint8)
-                lo2 = np.array(self.cfg.red_hsv_low2, dtype=np.uint8)
-                hi2 = np.array(self.cfg.red_hsv_high2, dtype=np.uint8)
-                mask = cv2.inRange(hsv, lo1, hi1) | cv2.inRange(hsv, lo2, hi2)
-
-                half       = w // 2
-                right_frac = float(mask[:, half:].sum()) / (255.0 * strip_h * (w - half))
-                total_frac = float(mask.sum()) / (255.0 * strip_h * w)
-
-                line_seen     = total_frac >= self.cfg.red_pixel_frac
-                not_left_only = right_frac >= self.cfg.exit_right_min_frac
-
-                if line_seen and not_left_only:
-                    print(f"[SignBehavior] EXITING: exit line seen — crossing it")
-                    self._exit_line_seen = True
-                    self._turn_counter   = 0
-
-            self._turn_counter += 1
-            if self._turn_counter >= self.cfg.exit_timeout_frames:
-                print("[SignBehavior] EXITING: timeout — MOVING")
-                self._exit_line_seen  = False
-                self._red_line_locked = False
-                self._possible_turns  = []
-                self._chosen_turn     = None
-                self.state            = State.MOVING
-                return base_left, base_right
-
-            return self.cfg.exit_speed, self.cfg.exit_speed
-
-        else:
-            if self._turn_counter < self.cfg.exit_post_line_frames:
-                self._turn_counter += 1
-                return self.cfg.exit_speed, self.cfg.exit_speed
-
-            print("[SignBehavior] EXITING: past exit line — MOVING (red-line unlocked)")
-            self._exit_line_seen  = False
+        self._turn_counter += 1
+        if self._turn_counter >= self.cfg.exit_timeout_frames:
+            print("[SignBehavior] EXITING: timeout — MOVING")
             self._red_line_locked = False
             self._possible_turns  = []
             self._chosen_turn     = None
             self.state            = State.MOVING
             return base_left, base_right
 
+        return self.cfg.exit_speed, self.cfg.exit_speed
+
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------    
-
     def _pick_turn(self):
         # type: () -> str
         return random.choice(self._possible_turns) if self._possible_turns else "forward"

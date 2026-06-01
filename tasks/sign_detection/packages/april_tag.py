@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 
 
+tag_confirm_frames = 2
+
 def detect_tags(signBehavior, frame_rgb: np.ndarray) -> list:
     gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
 
@@ -57,7 +59,7 @@ def confirm_tags(signBehavior, raw_tags: list):
     confirmed = [
         tid
         for tid, cnt in signBehavior._tag_buffer.items()
-        if cnt >= signBehavior.cfg.tag_confirm_frames
+        if cnt >= tag_confirm_frames
     ]
 
     if confirmed:

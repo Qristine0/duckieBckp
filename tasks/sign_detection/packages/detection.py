@@ -135,15 +135,17 @@ def should_stop(detections: List[Detection]) -> Tuple[bool, str]:
     # return False, ""
 
 
+vehicle_min_bbox_area = 2000.0
+
 # check for vehicles in frame; needed for intersection
 def vehicle_detected(signBehaviourFSM, detections):
     for det in detections:
         bbox, score, cls_id = det
-        if cls_id != signBehaviourFSM.cfg.vehicle_class_id:
+        if cls_id != 1:
             continue
         x1, y1, x2, y2 = bbox
         area = (x2 - x1) * (y2 - y1)
-        if area >= signBehaviourFSM.cfg.vehicle_min_bbox_area:
+        if area >= vehicle_min_bbox_area:
             print(f"[SignBehavior] vehicle detected (area={area:.0f})")
             return True
     return False
