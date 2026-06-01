@@ -37,9 +37,11 @@ def detect_lane_markings(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     clean_white  = cv2.morphologyEx(raw_white,  cv2.MORPH_OPEN,  k_open)
     clean_white  = cv2.morphologyEx(clean_white,  cv2.MORPH_CLOSE, k_close)
 
+    # return (clean_yellow > 0).astype(np.float32), (clean_white > 0).astype(np.float32)
+
     left_mask = np.zeros((h, w), dtype=np.uint8)
     left_mask[:, :w//2] = 255
-
+    
     right_mask = np.zeros((h, w), dtype=np.uint8)
     right_mask[:, w//2:] = 255
 
@@ -51,6 +53,92 @@ def detect_lane_markings(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         (yellow_left > 0).astype(np.float32),
         (white_right > 0).astype(np.float32)
     )
+
+
+# def detect_lane_markings(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+#     h, w, _ = image.shape
+#     roi_start = int(h * 0.40)
+#     roi = image[roi_start:, :]
+#     roi_h = roi.shape[0]
+#     small   = cv2.resize(roi, (w // 2, roi_h // 2))
+#     blurred = cv2.GaussianBlur(small, (5, 5), 0)
+#     hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+#     yellow_mask = cv2.inRange(hsv, _yellow_lower, _yellow_upper)
+#     hls = cv2.cvtColor(blurred, cv2.COLOR_BGR2HLS)
+#     white_mask = cv2.inRange(hls, _white_lower, _white_upper)
+#     # White only on right 70% — clip scaled to half resolution
+#     white_mask[:, :int((w // 2) * 0.30)] = 0
+#     kernel = np.ones((3, 3), np.uint8)
+#     yellow_mask = cv2.dilate(yellow_mask, kernel, iterations=1)
+#     white_mask  = cv2.dilate(white_mask,  kernel, iterations=1)
+#     yellow_mask = cv2.resize(yellow_mask, (w, roi_h), interpolation=cv2.INTER_NEAREST)
+#     white_mask  = cv2.resize(white_mask,  (w, roi_h), interpolation=cv2.INTER_NEAREST)
+#     mask_left_edge  = np.zeros((h, w), dtype=float)
+#     mask_right_edge = np.zeros((h, w), dtype=float)
+#     mask_left_edge[roi_start:, :]  = (yellow_mask > 0).astype(float)
+#     mask_right_edge[roi_start:, :] = (white_mask  > 0).astype(float)
+#     return mask_left_edge, mask_right_edge
+
+# def detect_lane_markings(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+#     h, w, _ = image.shape
+
+#     # ─────────────────────────────────────────────
+#     # 1. ROI (road only)
+#     # ─────────────────────────────────────────────
+#     roi_start = int(h * 0.40)
+#     roi = image[roi_start:, :]
+#     roi_h, roi_w = roi.shape[:2]
+
+#     small = cv2.resize(roi, (w // 2, roi_h // 2))
+#     blurred = cv2.GaussianBlur(small, (5, 5), 0)
+
+#     # ─────────────────────────────────────────────
+#     # 2. Color spaces
+#     # ─────────────────────────────────────────────
+#     hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+#     hls = cv2.cvtColor(blurred, cv2.COLOR_BGR2HLS)
+
+#     yellow_mask = cv2.inRange(hsv, _yellow_lower, _yellow_upper)
+#     white_mask  = cv2.inRange(hls, _white_lower, _white_upper)
+
+#     kernel = np.ones((3, 3), np.uint8)
+#     yellow_mask = cv2.dilate(yellow_mask, kernel, iterations=1)
+#     white_mask  = cv2.dilate(white_mask, kernel, iterations=1)
+
+#     # ─────────────────────────────────────────────
+#     # 3. Restore to ROI resolution
+#     # ─────────────────────────────────────────────
+#     yellow_mask = cv2.resize(yellow_mask, (w, roi_h), interpolation=cv2.INTER_NEAREST)
+#     white_mask  = cv2.resize(white_mask,  (w, roi_h), interpolation=cv2.INTER_NEAREST)
+
+#     # ─────────────────────────────────────────────
+#     # 4. SAFE SEPARATION (FIX FOR CROSSING YELLOW)
+#     # ─────────────────────────────────────────────
+
+#     # Find where yellow is strongest (lane boundary estimate)
+#     yellow_x = np.where(yellow_mask.sum(axis=0) > 0)[0]
+
+#     if len(yellow_x) > 0:
+#         yellow_right_edge = int(np.percentile(yellow_x, 90))
+#     else:
+#         yellow_right_edge = int(w * 0.45)  # fallback
+
+#     # Safety margin so white lane never crosses into yellow lane
+#     safety_margin = int(w * 0.05)
+#     white_cutoff = min(w, yellow_right_edge + safety_margin)
+
+#     white_mask[:, :white_cutoff] = 0
+
+#     # ─────────────────────────────────────────────
+#     # 5. Output masks
+#     # ─────────────────────────────────────────────
+#     mask_left_edge  = np.zeros((h, w), dtype=np.uint8)
+#     mask_right_edge = np.zeros((h, w), dtype=np.uint8)
+
+#     mask_left_edge[roi_start:, :]  = (yellow_mask > 0).astype(np.uint8)
+#     mask_right_edge[roi_start:, :] = (white_mask  > 0).astype(np.uint8)
+
+#     return mask_left_edge, mask_right_edge
 
 
 def set_hsv_bounds(yellow_lower, yellow_upper, white_lower, white_upper):

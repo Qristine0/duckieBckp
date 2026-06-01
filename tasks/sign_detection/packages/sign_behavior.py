@@ -65,9 +65,9 @@ from tasks.sign_detection.packages.april_tag import detect_tags, confirm_tags
 # Tag ID → meaning
 # ---------------------------------------------------------------------------
 class TagID(IntEnum):
-    STOP            = 2
+    STOP            = 1
     YIELD           = 0   #Yield_creep araa sachiro, checkpathze mainc gamosdis gachereba
-    TURN_LEFT_FWD   = 1
+    TURN_LEFT_FWD   = 0
     TURN_LEFT_RIGHT = 3
     TURN_RIGHT_FWD  = 4
     TURN_ALL        = 5
@@ -77,7 +77,7 @@ class TagID(IntEnum):
 _TAG_TURNS: dict[int, List[str]] = {
     TagID.TURN_LEFT_RIGHT: ["left",  "right"],
     # TagID.TURN_LEFT_FWD:   ["left",  "forward"],
-    TagID.TURN_LEFT_FWD:   ["left"],
+    TagID.TURN_LEFT_FWD:   ["forward"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
     TagID.TURN_ALL:        ["left",  "right", "forward"],
 }
@@ -111,6 +111,12 @@ class SignBehaviorConfig:
     red_hsv_low2:  Tuple[int, int, int] = (170, 120,  80)
     red_hsv_high2: Tuple[int, int, int] = (180, 255, 255)
 
+    
+    # ── Pre-turn alignment ────────────────────────────────────────────────
+    preturn_align_tolerance: float = 0.03   # ignore diff below this
+    preturn_align_speed:     float = 0.001   # correction added/subtracted per wheel
+    
+    
     # ── Stop-line hold ────────────────────────────────────────────────────
     # Frames to sit still at the red line before acting (STOP sign)
     stop_hold_frames: int = 0
@@ -144,7 +150,7 @@ class SignBehaviorConfig:
     # Right: just enough to cross the line and clear the corner.
     # Left:  more — needs to reach intersection centre before curving.
     # Forward: no pre-turn needed.
-    preturn_right_frames: int   = 6
+    preturn_right_frames: int   = 7
     preturn_left_frames:  int   = 11
     preturn_speed:        float = 0.20
     
@@ -155,7 +161,17 @@ class SignBehaviorConfig:
     intersect_forward_speed:  Tuple[float, float] = (0.20, 0.20)
     intersect_left_speed:     Tuple[float, float] = (0.00, 0.18)
     intersect_right_speed:    Tuple[float, float] = (0.18, 0.00)
-
+    
+    # ── Exiting ───────────────────────────────────────────────────────────
+    exit_speed:            float = 0.20
+    exit_right_min_frac:   float = 0.02   # right half must have this much red
+                                           # to confirm it's a new line, not the
+                                           # entry line visible from the left side
+    exit_timeout_frames:   int   = 10     # fallback if exit line never appears
+    
+    exit_post_line_frames: int = 5   # frames to drive past exit line before unlocking
+    
+    
     # ── Exiting ───────────────────────────────────────────────────────────
     # exit_frames: int   = 5
     exit_frames_forward: int   = 8
@@ -206,6 +222,8 @@ class SignBehaviorFSM:
         self.cfg   = config or SignBehaviorConfig()
         self.state: State = State.MOVING
 
+        self._preturn_correction: float = 0.0
+
         self._detector = _Detector(families="tag36h11", nthreads=2)
         print("[SignBehavior] initialised — detector ready")
 
@@ -214,6 +232,10 @@ class SignBehaviorFSM:
 
         # Saved sign — set while MOVING, consumed when red line fires
         self._saved_tag: Optional[int] = None
+
+        
+        self._exit_line_seen: bool = False
+
 
         # Per-state counters
         self._hold_counter:  int = 0
@@ -239,6 +261,8 @@ class SignBehaviorFSM:
 
         # Public debug dict
         self.debug: dict = {}
+        
+        self._frame_rgb: np.ndarray
 
     # ------------------------------------------------------------------
     # Public API
@@ -251,6 +275,8 @@ class SignBehaviorFSM:
         base_right: float,
         detections: list,
     ) -> Tuple[float, float]:
+        self._frame_rgb = frame_rgb
+        
         detections = detections or []
 
         tags      = detect_tags(self, frame_rgb)
@@ -258,7 +284,7 @@ class SignBehaviorFSM:
 
         red_line = False if self._red_line_locked else bool(detect_red_line(self, frame_rgb))
 
-        left, right = self._fsm_step(confirmed, detections, red_line, base_left, base_right)
+        left, right = self._fsm_step(confirmed, detections, red_line, base_left, base_right, frame_rgb)
 
         self.debug = {
             "state":          self.state.name,
@@ -291,6 +317,7 @@ class SignBehaviorFSM:
         red_line:       bool,
         base_left:      float,
         base_right:     float,
+        frame_rgb
     ) -> Tuple[float, float]:
 
         # ── MOVING ──────────────────────────────────────────────────────────
@@ -337,14 +364,28 @@ class SignBehaviorFSM:
                     self.state         = State.SLOWING
                     print("[SignBehavior] >>> YIELD — slowing to creep speed")
 
-                else:
-                    # STOP sign (tag 0) or no tag: full stop
+                elif tag == int(TagID.STOP):
                     self._slow_factor  = 1.0
                     self._slow_target  = 0.0
                     self._saved_tag    = None
                     self.state         = State.SLOWING
                     print(f"[SignBehavior] >>> STOP — full stop before red line "
                           f"(saved_tag={tag})")
+                else:
+                    # no tag go forward
+                    self._chosen_turn    = "forward"
+                    self._turn_counter   = 0
+                    self._saved_tag      = None
+                    self.state           = State.INTERSECT
+                    print(f"[SignBehavior] >>> INTERSECT — direction: {self._chosen_turn} "
+                          f"(No tag (Default behavior))")
+                    # STOP sign (tag 0) or no tag: full stop
+                    # self._slow_factor  = 1.0
+                    # self._slow_target  = 0.0
+                    # self._saved_tag    = None
+                    # self.state         = State.SLOWING
+                    # print(f"[SignBehavior] >>> STOP — full stop before red line "
+                    #       f"(saved_tag={tag})")
 
             return base_left, base_right
 
@@ -524,6 +565,50 @@ class SignBehaviorFSM:
         print(f"[SignBehavior] >>> TURNING 'forward' (no pre-turn)")
         return self.cfg.intersect_forward_speed
 
+    # def _preturn_step(self, base_left, base_right):
+    #     frame_rgb = self._frame_rgb
+    #     turn  = self._chosen_turn or "forward"
+    #     total = (self.cfg.preturn_right_frames if turn == "right"
+    #             else self.cfg.preturn_left_frames)
+
+    #     # On the very first frame — measure offset from red line once
+    #     if self._turn_counter == 0:
+    #         self._preturn_correction = 0.0
+    #         if frame_rgb is not None:
+    #             h, w    = frame_rgb.shape[:2]
+    #             strip_h = max(2, int(h * self.cfg.red_strip_frac))
+    #             strip   = frame_rgb[h - strip_h:, :]
+    #             hsv     = cv2.cvtColor(strip, cv2.COLOR_RGB2HSV)
+    #             lo1 = np.array(self.cfg.red_hsv_low1, dtype=np.uint8)
+    #             hi1 = np.array(self.cfg.red_hsv_high1, dtype=np.uint8)
+    #             lo2 = np.array(self.cfg.red_hsv_low2, dtype=np.uint8)
+    #             hi2 = np.array(self.cfg.red_hsv_high2, dtype=np.uint8)
+    #             mask = cv2.inRange(hsv, lo1, hi1) | cv2.inRange(hsv, lo2, hi2)
+
+    #             half       = w // 2
+    #             left_frac  = float(mask[:, :half].sum()) / (255.0 * strip_h * half)
+    #             right_frac = float(mask[:, half:].sum()) / (255.0 * strip_h * (w - half))
+    #             diff       = left_frac - right_frac
+
+    #             if abs(diff) > self.cfg.preturn_align_tolerance:
+    #                 self._preturn_correction = self.cfg.preturn_align_speed * (
+    #                     1.0 if diff > 0 else -1.0
+    #                 )
+    #             print(f"[SignBehavior] PRE_TURN: initial diff={diff:.3f} "
+    #                 f"correction={self._preturn_correction:+.3f}")
+
+    #     # Every frame: drive forward with the fixed correction applied
+    #     if self._turn_counter < total:
+    #         self._turn_counter += 1
+    #         fwd = self.cfg.preturn_speed
+    #         c   = self._preturn_correction
+    #         return fwd - c, fwd + c
+
+    #     self._turn_counter = 0
+    #     self.state = State.TURNING
+    #     print(f"[SignBehavior] >>> PRE_TURN done — TURNING '{turn}'")
+    #     return 0.0, 0.0
+
     def _preturn_step(self, base_left, base_right):
         turn = self._chosen_turn or "forward"
         total = (self.cfg.preturn_right_frames if turn == "right"
@@ -556,37 +641,70 @@ class SignBehaviorFSM:
             self._turn_counter += 1
             return speeds_map.get(turn, (base_left, base_right))
 
-        self._turn_counter = 0
-        self.state = State.EXITING
+        self._turn_counter    = 0
+        self._exit_line_seen  = False 
+        self.state            = State.EXITING
         print(f"[SignBehavior] >>> TURNING '{turn}' done — EXITING")
         return base_left, base_right
     
     # ------------------------------------------------------------------
     # EXITING
     # ------------------------------------------------------------------
-    def _exiting_step(
-        self,
-        base_left:  float,
-        base_right: float,
-    ) -> Tuple[float, float]:
-        frames_map = {
-            "forward": self.cfg.exit_frames_forward,
-            "left":    self.cfg.exit_frames_left,
-            "right":   self.cfg.exit_frames_right,
-        }
-        total = frames_map.get(self._chosen_turn or "forward", self.cfg.exit_frames_forward)
+    def _exiting_step(self, base_left, base_right) -> Tuple[float, float]:
+        frame_rgb = self._frame_rgb
 
-        if self._turn_counter < total:
+        if not self._exit_line_seen:
+            # Phase 1: drive until exit line appears
+            if frame_rgb is not None:
+                h, w    = frame_rgb.shape[:2]
+                strip_h = max(2, int(h * self.cfg.red_strip_frac))
+                strip   = frame_rgb[h - strip_h:, :]
+                hsv     = cv2.cvtColor(strip, cv2.COLOR_RGB2HSV)
+                lo1 = np.array(self.cfg.red_hsv_low1, dtype=np.uint8)
+                hi1 = np.array(self.cfg.red_hsv_high1, dtype=np.uint8)
+                lo2 = np.array(self.cfg.red_hsv_low2, dtype=np.uint8)
+                hi2 = np.array(self.cfg.red_hsv_high2, dtype=np.uint8)
+                mask = cv2.inRange(hsv, lo1, hi1) | cv2.inRange(hsv, lo2, hi2)
+
+                half       = w // 2
+                left_frac  = float(mask[:, :half].sum()) / (255.0 * strip_h * half)
+                right_frac = float(mask[:, half:].sum()) / (255.0 * strip_h * (w - half))
+                total_frac = float(mask.sum()) / (255.0 * strip_h * w)
+
+                line_seen     = total_frac >= self.cfg.red_pixel_frac
+                not_left_only = right_frac >= self.cfg.exit_right_min_frac
+
+                if line_seen and not_left_only:
+                    print(f"[SignBehavior] EXITING: exit line seen — crossing it")
+                    self._exit_line_seen  = True
+                    self._turn_counter    = 0  # reuse counter for post-line drive
+
+            # Timeout fallback
             self._turn_counter += 1
+            if self._turn_counter >= self.cfg.exit_timeout_frames:
+                print("[SignBehavior] EXITING: timeout — MOVING")
+                self._exit_line_seen  = False
+                self._red_line_locked = False
+                self._possible_turns  = []
+                self._chosen_turn     = None
+                self.state            = State.MOVING
+                return base_left, base_right
+
             return self.cfg.exit_speed, self.cfg.exit_speed
 
-        self._red_line_locked = False
-        self._possible_turns  = []
-        self._chosen_turn     = None
-        self.state            = State.MOVING
-        print("[SignBehavior] >>> intersection cleared — MOVING (red-line unlocked)")
-        return base_left, base_right
+        else:
+            # Phase 2: drive forward past the exit line before unlocking
+            if self._turn_counter < self.cfg.exit_post_line_frames:
+                self._turn_counter += 1
+                return self.cfg.exit_speed, self.cfg.exit_speed
 
+            print("[SignBehavior] EXITING: past exit line — MOVING (red-line unlocked)")
+            self._exit_line_seen  = False
+            self._red_line_locked = False
+            self._possible_turns  = []
+            self._chosen_turn     = None
+            self.state            = State.MOVING
+            return base_left, base_right
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------

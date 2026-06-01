@@ -5,7 +5,12 @@ import cv2
 def detect_red_line(signBehavior, frame_rgb: np.ndarray) -> bool:
         h, w    = frame_rgb.shape[:2]
         strip_h = max(2, int(h * signBehavior.cfg.red_strip_frac))
-        strip   = frame_rgb[h - strip_h:, :]
+        
+        # todo check rame ar aurios
+        l = int(w / 3)
+        r = int(2*w/3)
+        strip   = frame_rgb[h - strip_h:, l:r]
+        # strip   = frame_rgb[h - strip_h:, ]
 
         hsv = cv2.cvtColor(strip, cv2.COLOR_RGB2HSV)
         lo1 = np.array(signBehavior.cfg.red_hsv_low1,  dtype=np.uint8)
