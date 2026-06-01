@@ -3,7 +3,6 @@ import os
 import signal
 import threading
 import time
-import queue
 import socket
 
 script_dir   = os.path.dirname(os.path.abspath(__file__))
@@ -13,14 +12,11 @@ sys.path.insert(0, project_root)
 import cv2
 from flask import Flask, Response, render_template_string, jsonify, request
 
-# from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent
 from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWithSigns as LaneServoingAgent
 from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
 
 from tasks.sign_detection.packages.detection import detect_obstacles, CLASS_NAMES
-
 from tasks.sign_detection.packages.detection import should_stop as student_should_stop
-
 
 from servers.templates.sign_detection import SIGN_DETECTION_TEMPLATE as HTML_TEMPLATE
 
@@ -38,7 +34,6 @@ running    = False
 manual_mode = False
 stop_event = threading.Event()
 
-_frame_queue     = queue.Queue(maxsize=1)
 _last_detections = []
 _detection_lock  = threading.Lock()
 _stopped_by_det  = False
@@ -82,44 +77,35 @@ def manual_control_loop():
         time.sleep(0.05)
 
 
-def detection_loop():
-    global _last_detections
-    while not stop_event.is_set():
-        try:
-            frame_rgb = _frame_queue.get(timeout=0.5)
-        except queue.Empty:
-            continue
-        result = detect_obstacles(frame_rgb)
-        if result is not None:
-            with _detection_lock:
-                _last_detections = result
-
-
-def _should_stop(detections, frame_h: int):
-    return student_should_stop(detections, frame_h)
+def _should_stop(detections):
+    return student_should_stop(detections)
 
 
 def visualize(frame_bgr):
-    global _stopped_by_det, _stop_reason
+    global _stopped_by_det, _stop_reason, _last_detections
 
     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
+    # Run detection inline on every frame
+    result = detect_obstacles(frame_rgb)
+    if result is not None:
+        with _detection_lock:
+            _last_detections = result
 
     with _detection_lock:
         detections = list(_last_detections)
 
-    pwm_left = pwm_right = 0.0
     if manual_mode:
         _stopped_by_det = False
         _stop_reason    = ''
     elif lane_agent is not None:
         pwm_left, pwm_right = lane_agent.compute_commands(frame_rgb)
 
-        should_stop, reason = _should_stop(detections)
-        _stopped_by_det = should_stop
+        should_stop_flag, reason = _should_stop(detections)
+        _stopped_by_det = should_stop_flag
         _stop_reason    = reason
 
-        if running and not should_stop:
+        if running and not should_stop_flag:
             wheels.set_wheels_speed(pwm_left, pwm_right)
         else:
             wheels.set_wheels_speed(0.0, 0.0)
@@ -187,7 +173,7 @@ def status():
         'trt_building':         False,
         'stopped_by_detection': _stopped_by_det,
         'stop_reason':          _stop_reason,
-        'conf_threshold': 0.5,
+        'conf_threshold':       0.5,
         'detections': [
             {'class': CLASS_NAMES.get(c, str(c)), 'score': round(s, 3), 'bbox': list(b)}
             for b, s, c in dets
@@ -221,25 +207,14 @@ def main():
         print('[Init] Camera ready')
 
     def _init_agents():
-        global lane_agent, sign_config
-        # lane_agent = LaneServoingAgent()
-        sign_config = SignBehaviorConfig(
-            # stop_hold_frames=8,
-            # slow_ramp_factor=0.82,
-            # tag_confirm_frames=1,
-            # min_margin=10.0,
-        )
-        lane_agent = LaneServoingAgent(
-            sign_config
-        )
-    
+        global lane_agent
+        sign_config = SignBehaviorConfig()
+        lane_agent = LaneServoingAgent(sign_config)
         print(f'[Init] Lane agent ready (speed={lane_agent.base_speed})')
 
-
-    threading.Thread(target=_init_wheels,      daemon=True).start()
-    threading.Thread(target=_init_camera,      daemon=True).start()
-    threading.Thread(target=_init_agents,      daemon=True).start()
-    threading.Thread(target=detection_loop,    daemon=True).start()
+    threading.Thread(target=_init_wheels,        daemon=True).start()
+    threading.Thread(target=_init_camera,        daemon=True).start()
+    threading.Thread(target=_init_agents,        daemon=True).start()
     threading.Thread(target=manual_control_loop, daemon=True).start()
 
     def _shutdown(signum, frame):

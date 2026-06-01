@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from tasks.object_detection.packages.agent import CLASS_NAMES, CLASS_COLORS
+from tasks.sign_detection.packages.detection import CLASS_NAMES, CLASS_COLORS
 
 
 def draw_detections(image_bgr: np.ndarray, detections: list) -> np.ndarray:

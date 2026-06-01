@@ -2,14 +2,13 @@ import sys
 import os
 import threading
 import time
-import queue
 import socket
 
 script_dir   = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.join(script_dir, '..', '..')
 sys.path.insert(0, project_root)
 
-import cv2
+import cv2 as _cv2
 from flask import Flask, Response, render_template_string, jsonify, request
 
 from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent as l
@@ -18,47 +17,6 @@ from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWith
 from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
 
 from tasks.sign_detection.packages.detection import detect_obstacles, CLASS_NAMES
-
-# (the rest of the file sees the same name, so nothing else needs changing there)
- 
- 
-
-import cv2 as _cv2
-from tasks.sign_detection.packages.sign_behavior import draw_sign_debug as _draw_sign_debug
- 
- 
-def visualize(frame_rgb):           # <-- full replacement of the function
-    global _stopped_by_det, _stop_reason
- 
-    bgr = _cv2.cvtColor(frame_rgb, _cv2.COLOR_RGB2BGR)
- 
-    if wheels is None:
-        return bgr
-
-    with _detection_lock:
-        detections = list(_last_detections)
- 
-    if manual_mode:
-        _stopped_by_det = False
-        _stop_reason    = ''
-    # elif lane_agent is not None:
-    else:
-        # pass detections so the sign FSM can react to vehicles ──
-        pwm_left, pwm_right = lane_agent.compute_commands(frame_rgb, detections)
- 
-        should_stop_flag, reason = _should_stop(detections)
-        _stopped_by_det = should_stop_flag
-        _stop_reason    = reason
- 
-        if running and not should_stop_flag and not wheels.is_game_over():
-            wheels.set_wheels_speed(pwm_left, pwm_right)
-        else:
-            wheels.set_wheels_speed(0.0, 0.0)
- 
- 
-    return bgr
-
-
 from tasks.sign_detection.packages.detection import should_stop as student_should_stop
 
 from servers.templates.sign_detection import SIGN_DETECTION_TEMPLATE as HTML_TEMPLATE
@@ -79,30 +37,51 @@ running    = False
 manual_mode = False
 stop_event = threading.Event()
 
-_frame_queue     = queue.Queue(maxsize=1)
 _last_detections = []
 _detection_lock  = threading.Lock()
 _stopped_by_det  = False
 _stop_reason     = ''
 
-keys_pressed     = {'up': False, 'down': False, 'left': False, 'right': False}
-_keys_lock       = threading.Lock()
+keys_pressed      = {'up': False, 'down': False, 'left': False, 'right': False}
+_keys_lock        = threading.Lock()
 _keys_last_update = time.time()
 
-_current_scene   = 'object_detection'
+_current_scene = 'object_detection'
 
 
-def detection_loop():
-    global _last_detections
-    while not stop_event.is_set():
-        try:
-            frame_rgb = _frame_queue.get(timeout=0.5)
-        except queue.Empty:
-            continue
-        result = detect_obstacles(frame_rgb)
-        if result is not None:
-            with _detection_lock:
-                _last_detections = result
+def visualize(frame_rgb):
+    global _stopped_by_det, _stop_reason, _last_detections
+
+    bgr = _cv2.cvtColor(frame_rgb, _cv2.COLOR_RGB2BGR)
+
+    if wheels is None:
+        return bgr
+
+    # Run detection inline on every frame
+    result = detect_obstacles(frame_rgb)
+    if result is not None:
+        with _detection_lock:
+            _last_detections = result
+
+    with _detection_lock:
+        detections = list(_last_detections)
+
+    if manual_mode:
+        _stopped_by_det = False
+        _stop_reason    = ''
+    else:
+        pwm_left, pwm_right = lane_agent.compute_commands(frame_rgb, detections)
+
+        should_stop_flag, reason = _should_stop(detections)
+        _stopped_by_det = should_stop_flag
+        _stop_reason    = reason
+
+        if running and not should_stop_flag and not wheels.is_game_over():
+            wheels.set_wheels_speed(pwm_left, pwm_right)
+        else:
+            wheels.set_wheels_speed(0.0, 0.0)
+
+    return bgr
 
 
 def manual_control_loop():
@@ -134,7 +113,7 @@ def manual_control_loop():
         elif kc['right']:
             left, right = 0.3, -0.3
 
-        if not (wheels.is_game_over()):
+        if not wheels.is_game_over():
             wheels.set_wheels_speed(left, right)
 
         time.sleep(0.05)
@@ -144,13 +123,12 @@ def _should_stop(detections):
     return student_should_stop(detections)
 
 
-
 generate_frames = make_frame_generator(lambda: camera, visualize, quality=50)
 
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE,hostname=socket.gethostname(), virtual=True)
+    return render_template_string(HTML_TEMPLATE, hostname=socket.gethostname(), virtual=True)
 
 @app.route('/video')
 def video():
@@ -200,7 +178,6 @@ def switch_scene():
     if wheels:
         wheels.change_scene(GODOT_SCENES[target])
     _current_scene = target
-    # Auto-set drive mode based on scene
     if target == 'introduction':
         manual_mode = True
     else:
@@ -235,8 +212,6 @@ def remove_objects():
 def set_threshold():
     return jsonify({})
 
-
-
 @app.route('/status')
 def status():
     with _detection_lock:
@@ -256,8 +231,8 @@ def status():
             {'class': CLASS_NAMES.get(c, str(c)), 'score': round(s, 3), 'bbox': list(b)}
             for b, s, c in dets
         ],
-        'sign_state':    lane_agent.sign_state if lane_agent else 'N/A',
-        'sign_debug':    lane_agent.sign_debug if lane_agent else {},
+        'sign_state': lane_agent.sign_state if lane_agent else 'N/A',
+        'sign_debug': lane_agent.sign_debug if lane_agent else {},
     })
 
 
@@ -277,29 +252,22 @@ def main():
     print('OBJECT DETECTION — LANE FOLLOW + STOP ON DETECTION')
     print('=' * 60)
 
-    print('\n[1/4] Creating lane agent...')
-    
-    
-       
-    
+    print('\n[1/3] Creating lane agent...')
     lane_agent = LaneServoingAgent(
         sign_config=SignBehaviorConfig()
     )
-
     print(f'  p_gain={lane_agent.p_gain}, d_gain={lane_agent.d_gain}, speed={lane_agent.base_speed}')
 
-
-    print('\n[3/4] Initializing wheels...')
+    print('\n[2/3] Initializing wheels...')
     wheels = GodotWheelsDriver(
         WheelPWMConfiguration(pwm_min=0), WheelPWMConfiguration(pwm_min=0),
         godot_host=args.godot_host, godot_port=args.wheel_port,
     )
 
-    print('\n[4/4] Initializing camera...')
+    print('\n[3/3] Initializing camera...')
     camera = GodotCameraDriver(godot_config=GodotCameraConfig(host='0.0.0.0', port=args.frame_port))
     camera.start()
 
-    threading.Thread(target=detection_loop,     daemon=True).start()
     threading.Thread(target=manual_control_loop, daemon=True).start()
 
     web_port = find_available_port(args.port)
@@ -312,9 +280,6 @@ def main():
         print('\nShutting down...')
     finally:
         shutdown_cleanup(wheels, camera, stop_event)
-
-
-
 
 
 if __name__ == '__main__':
