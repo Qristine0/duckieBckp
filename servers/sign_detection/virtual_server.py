@@ -366,10 +366,10 @@ def main():
     
     lane_agent = LaneServoingAgent(
         sign_config=SignBehaviorConfig(
-            stop_hold_frames   = 8,
-            slow_ramp_factor   = 0.82,
-            tag_confirm_frames = 1,
-            min_margin         = 10.0,
+            # stop_hold_frames   = 8,
+            # slow_ramp_factor   = 0.82,
+            # tag_confirm_frames = 1,
+            # min_margin         = 10.0,
         )
     )
 

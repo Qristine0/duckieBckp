@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
-# from pupil_apriltags import Detector as _Detector
 from tasks.sign_detection.packages.red_line_detection import detect_red_line
 from tasks.sign_detection.packages.april_tag import detect_tags, confirm_tags
 
@@ -29,7 +28,7 @@ class TagID(IntEnum):
 
 _TAG_TURNS = {
     TagID.TURN_LEFT_RIGHT: ["left",  "right"],
-    TagID.TURN_LEFT_FWD:   ["right"],
+    TagID.TURN_LEFT_FWD:   ["left"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
     TagID.TURN_ALL:        ["left",  "right", "forward"],
 }  # type: Dict[int, List[str]]
@@ -134,8 +133,6 @@ class SignBehaviorFSM:
 
         self._preturn_correction = 0.0  # type: float
 
-        # self._detector = _Detector(families="tag36h11", nthreads=2)
-        self._detector = None
         print("[SignBehavior] initialised — detector ready")
 
         self._tag_buffer  = {}    # type: Dict[int, int]
