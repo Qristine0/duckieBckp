@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent
-from tasks.sign_detection.packages.sign_behavior import SignBehaviorFSM, SignBehaviorConfig, draw_sign_debug
+from tasks.sign_detection.packages.sign_behavior import SignBehaviorFSM, SignBehaviorConfig
 
 
 class LaneServoingAgentWithSigns(LaneServoingAgent):

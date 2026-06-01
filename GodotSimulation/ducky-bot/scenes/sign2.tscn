@@ -15,7 +15,7 @@ albedo_texture = ExtResource("3_eqtro")
 [node name="MapFollower" type="Node3D" unique_id=1690158760]
 
 [node name="DuckieBot" parent="." unique_id=865415826 instance=ExtResource("1_h126k")]
-transform = Transform3D(0.9977303, 0, -0.06733614, 0, 1, 0, 0.06733614, 0, 0.9977303, 5.5704403, 0.044506483, 4.9690294)
+transform = Transform3D(0.9977303, 0, -0.06733614, 0, 1, 0, 0.06733614, 0, 0.9977303, 5.5704403, 0.044506483, 4.244176)
 WheelPort = 5011
 CameraPort = 5011
 

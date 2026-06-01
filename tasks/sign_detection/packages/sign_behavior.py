@@ -3,122 +3,14 @@ sign_behavior.py
 ================
 AprilTag-based sign detection and intersection state machine for Duckiebot.
 """
-
 import random
-from dataclasses import dataclass, field
-from enum import IntEnum, auto
 from typing import Dict, List, Optional, Tuple
-
 import cv2
 import numpy as np
 from tasks.sign_detection.packages.red_line_detection import detect_red_line
 from tasks.sign_detection.packages.april_tag import detect_tags, confirm_tags
-
-# ---------------------------------------------------------------------------
-# Tag ID -> meaning
-# ---------------------------------------------------------------------------
-class TagID(IntEnum):
-    STOP            = 1
-    YIELD           = 0
-    TURN_LEFT_FWD   = 0
-    TURN_LEFT_RIGHT = 3
-    TURN_RIGHT_FWD  = 4
-    TURN_ALL        = 5
-
-
-_TAG_TURNS = {
-    TagID.TURN_LEFT_RIGHT: ["left",  "right"],
-    TagID.TURN_LEFT_FWD:   ["left"],
-    TagID.TURN_RIGHT_FWD:  ["right", "forward"],
-    TagID.TURN_ALL:        ["left",  "right", "forward"],
-}  # type: Dict[int, List[str]]
-
-
-# ---------------------------------------------------------------------------
-# State enum
-# ---------------------------------------------------------------------------
-class State(IntEnum):
-    MOVING      = auto()
-    SLOWING     = auto()
-    YIELD_CREEP = auto()
-    STOPPED     = auto()
-    CHECKPATH   = auto()
-    POST_STOP   = auto()
-    INTERSECT   = auto()
-    PRE_TURN    = auto()
-    TURNING     = auto()
-    EXITING     = auto()
-
-
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-@dataclass
-class SignBehaviorConfig:
-    # Red-line detection
-    red_strip_frac  = 0.50
-    red_pixel_frac  = 0.03
-    red_hsv_low1    = (0,   120,  80)   # type: Tuple[int, int, int]
-    red_hsv_high1   = (10,  255, 255)   # type: Tuple[int, int, int]
-    red_hsv_low2    = (170, 120,  80)   # type: Tuple[int, int, int]
-    red_hsv_high2   = (180, 255, 255)   # type: Tuple[int, int, int]
-
-    # Pre-turn alignment
-    preturn_align_tolerance = 0.03
-    preturn_align_speed     = 0.001
-
-    # Stop-line hold
-    stop_hold_frames = 0
-
-    # Speed ramp
-    slow_ramp_factor        = 0.92
-    stopped_speed_threshold = 0.05
-
-    # YIELD specific
-    yield_min_speed    = 0.1
-    yield_creep_frames = 5
-
-    # CHECKPATH sweep
-    check_left_frames   = 4
-    check_right_frames  = 4
-    check_turn_speed    = 0.04
-    check_settle_frames = 5
-
-    # POST_STOP
-    post_stop_frames = 12
-    post_stop_speed  = 0.2
-
-    # Pre-turn forward creep
-    preturn_right_frames = 30
-    preturn_left_frames  = 40
-    preturn_speed        = 0.20
-
-    # Intersection manoeuvres
-    intersect_forward_frames = 5
-    intersect_left_frames    = 9
-    intersect_right_frames   = 9
-    intersect_forward_speed  = (0.20, 0.20)  # type: Tuple[float, float]
-    intersect_left_speed     = (0.00, 0.18)  # type: Tuple[float, float]
-    intersect_right_speed    = (0.18, 0.00)  # type: Tuple[float, float]
-
-    # Exiting
-    exit_speed            = 0.20
-    exit_right_min_frac   = 0.02
-    exit_timeout_frames   = 10
-    exit_post_line_frames = 5
-    exit_frames_forward   = 8
-    exit_frames_left      = 8
-    exit_frames_right     = 2
-
-    # Vehicle detection
-    vehicle_class_id      = 1
-    vehicle_min_bbox_area = 2000.0
-
-    # AprilTag detector
-    min_margin         = 10.0
-    tag_confirm_frames = 3
-    camera_params      = None   # type: Optional[Tuple[float, float, float, float]]
-    tag_size_m         = 0.065
+from tasks.sign_detection.packages.detection import vehicle_detected
+from tasks.sign_detection.packages.sign_behavior_config import TagID, _TAG_TURNS, SignBehaviorConfig, State
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +19,6 @@ class SignBehaviorConfig:
 class SignBehaviorFSM:
 
     def __init__(self, config=None):
-        # type: (Optional[SignBehaviorConfig]) -> None
         self.cfg   = config or SignBehaviorConfig()
         self.state = State.MOVING  # type: State
 
@@ -158,6 +49,8 @@ class SignBehaviorFSM:
         self.debug = {}  # type: dict
 
         self._frame_rgb = None  # type: Optional[np.ndarray]
+        
+        self._vehicle_detected = vehicle_detected
 
     # ------------------------------------------------------------------
     # Public API
@@ -199,7 +92,6 @@ class SignBehaviorFSM:
     # ------------------------------------------------------------------
     # FSM core
     # ------------------------------------------------------------------
-
     def _fsm_step(self, confirmed_tags, detections, red_line, base_left, base_right, frame_rgb):
         # type: (List[int], list, bool, float, float, np.ndarray) -> Tuple[float, float]
 
@@ -289,7 +181,7 @@ class SignBehaviorFSM:
         elif self.state == State.YIELD_CREEP:
             if self._creep_counter < self.cfg.yield_creep_frames:
                 self._creep_counter += 1
-                if self._vehicle_detected(detections):
+                if self._vehicle_detected(self, detections):
                     self._hold_counter = 0
                     self.state         = State.STOPPED
                     print("[SignBehavior] >>> vehicle seen during yield creep — STOPPED")
@@ -350,7 +242,6 @@ class SignBehaviorFSM:
     # ------------------------------------------------------------------
     # CHECKPATH
     # ------------------------------------------------------------------
-
     def _checkpath_step(self, detections):
         # type: (list) -> Tuple[float, float]
         spd = self.cfg.check_turn_speed
@@ -366,25 +257,25 @@ class SignBehaviorFSM:
         phase_c_end    = phase_b_settle + cl
 
         if c < phase_a_end:
-            if self._vehicle_detected(detections):
+            if self._vehicle_detected(self, detections):
                 self._vehicle_seen_left = True
             self._check_counter += 1
             return -spd, spd
 
         elif c < phase_a_settle:
-            if self._vehicle_detected(detections):
+            if self._vehicle_detected(self, detections):
                 self._vehicle_seen_left = True
             self._check_counter += 1
             return 0.0, 0.0
 
         elif c < phase_b_end:
-            if self._vehicle_detected(detections):
+            if self._vehicle_detected(self, detections):
                 self._vehicle_seen_right = True
             self._check_counter += 1
             return spd, -spd
 
         elif c < phase_b_settle:
-            if self._vehicle_detected(detections):
+            if self._vehicle_detected(self, detections):
                 self._vehicle_seen_right = True
             self._check_counter += 1
             return 0.0, 0.0
@@ -409,7 +300,6 @@ class SignBehaviorFSM:
     # ------------------------------------------------------------------
     # INTERSECT
     # ------------------------------------------------------------------
-
     def _intersect_step(self, base_left, base_right):
         # type: (float, float) -> Tuple[float, float]
         turn = self._chosen_turn or "forward"
@@ -467,7 +357,6 @@ class SignBehaviorFSM:
     # ------------------------------------------------------------------
     # EXITING
     # ------------------------------------------------------------------
-
     def _exiting_step(self, base_left, base_right):
         # type: (float, float) -> Tuple[float, float]
         frame_rgb = self._frame_rgb
@@ -523,48 +412,8 @@ class SignBehaviorFSM:
 
     # ------------------------------------------------------------------
     # Helpers
-    # ------------------------------------------------------------------
-
-    def _vehicle_detected(self, detections):
-        # type: (list) -> bool
-        for det in detections:
-            bbox, score, cls_id = det
-            if cls_id != self.cfg.vehicle_class_id:
-                continue
-            x1, y1, x2, y2 = bbox
-            area = (x2 - x1) * (y2 - y1)
-            if area >= self.cfg.vehicle_min_bbox_area:
-                print(f"[SignBehavior] vehicle detected (area={area:.0f})")
-                return True
-        return False
+    # ------------------------------------------------------------------    
 
     def _pick_turn(self):
         # type: () -> str
         return random.choice(self._possible_turns) if self._possible_turns else "forward"
-
-
-# ---------------------------------------------------------------------------
-# Debug overlay (BGR frame, in-place)
-# ---------------------------------------------------------------------------
-def draw_sign_debug(bgr, fsm):
-    # type: (np.ndarray, SignBehaviorFSM) -> np.ndarray
-    d = fsm.debug
-    y = 30
-    lines = [
-        f"State:    {d.get('state', '?')}",
-        f"Tags:     {d.get('confirmed_tags', [])}",
-        f"Saved:    {d.get('saved_tag', '-')}",
-        f"RedLine:  {d.get('red_line', False)}  locked={d.get('red_locked', False)}",
-        f"Turns:    {d.get('possible_turns', [])}",
-        f"Turn:     {d.get('chosen_turn', '-')}",
-        f"SlowF:    {d.get('slow_factor', 1.0):.2f}",
-        f"Counters: hold={d.get('hold_counter', 0)} "
-        f"creep={d.get('creep_counter', 0)} "
-        f"chk={d.get('check_counter', 0)} "
-        f"t={d.get('turn_counter', 0)}",
-    ]
-    for line in lines:
-        cv2.putText(bgr, line, (10, y),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 200), 2, cv2.LINE_AA)
-        y += 22
-    return bgr
