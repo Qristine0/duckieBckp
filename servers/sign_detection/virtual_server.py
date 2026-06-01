@@ -12,7 +12,7 @@ sys.path.insert(0, project_root)
 import cv2
 from flask import Flask, Response, render_template_string, jsonify, request
 
-# from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent
+from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent as l
 
 from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWithSigns as LaneServoingAgent
 from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
