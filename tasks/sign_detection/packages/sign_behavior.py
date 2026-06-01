@@ -18,9 +18,9 @@ from tasks.sign_detection.packages.april_tag import detect_tags, confirm_tags
 # Tag ID -> meaning
 # ---------------------------------------------------------------------------
 class TagID(IntEnum):
-    STOP            = 0
+    STOP            = 1
     YIELD           = 0
-    TURN_LEFT_FWD   = 1
+    TURN_LEFT_FWD   = 0
     TURN_LEFT_RIGHT = 3
     TURN_RIGHT_FWD  = 4
     TURN_ALL        = 5
