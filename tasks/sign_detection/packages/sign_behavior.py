@@ -5,13 +5,11 @@ AprilTag-based sign detection and intersection state machine for Duckiebot.
 """
 import random
 from typing import Dict, List, Optional, Tuple
-import cv2
 import numpy as np
 from tasks.sign_detection.packages.red_line_detection import detect_red_line
 from tasks.sign_detection.packages.april_tag import detect_tags, confirm_tags
 from tasks.sign_detection.packages.detection import vehicle_detected
 from tasks.sign_detection.packages.sign_behavior_config import TagID, _TAG_TURNS, SignBehaviorConfig, State
-
 
 # ---------------------------------------------------------------------------
 # FSM
@@ -50,6 +48,9 @@ class SignBehaviorFSM:
         self._frame_rgb = None  # type: Optional[np.ndarray]
         
         self._vehicle_detected = vehicle_detected
+        
+        self._left_offsets = []
+        self._right_offsets = []
 
     # ------------------------------------------------------------------
     # Public API
@@ -127,15 +128,16 @@ class SignBehaviorFSM:
                     print(f"[SignBehavior] >>> INTERSECT — direction: {self._chosen_turn} "
                           f"(from tag {tag}, options {self._possible_turns})")
 
-                elif tag == int(TagID.YIELD):
-                    self._slow_factor  = 1.0
-                    self._slow_target  = self.cfg.yield_min_speed
-                    self._saved_tag    = None
-                    self.state         = State.SLOWING
-                    print("[SignBehavior] >>> YIELD — slowing to creep speed")
+                # elif tag == int(TagID.YIELD):
+                #     self._slow_factor  = 1.0
+                #     self._slow_target  = self.cfg.yield_min_speed
+                #     self._saved_tag    = None
+                #     self.state         = State.SLOWING
+                #     print("[SignBehavior] >>> YIELD — slowing to creep speed")
 
-                elif tag == int(TagID.STOP):
-                    self._slow_factor  = 1.0
+                # Yield same as stop
+                elif tag == int(TagID.STOP) or tag == int(TagID.YIELD):
+                    self._slow_factor  = 0.5
                     self._slow_target  = 0.0
                     self._saved_tag    = None
                     self.state         = State.SLOWING
@@ -180,7 +182,7 @@ class SignBehaviorFSM:
         elif self.state == State.YIELD_CREEP:
             if self._creep_counter < self.cfg.yield_creep_frames:
                 self._creep_counter += 1
-                if self._vehicle_detected(self, detections):
+                if self._vehicle_detected(detections):
                     self._hold_counter = 0
                     self.state         = State.STOPPED
                     print("[SignBehavior] >>> vehicle seen during yield creep — STOPPED")
@@ -242,8 +244,9 @@ class SignBehaviorFSM:
     # ------------------------------------------------------------------
     # CHECKPATH
     # ------------------------------------------------------------------
+    # during check_settle_frames frames - calculate offset - to see if car is moving or rotating
+    # if both rotating -> stopped at STOP sign. one who has bot on its left goes first.
     def _checkpath_step(self, detections):
-        # type: (list) -> Tuple[float, float]
         spd = self.cfg.check_turn_speed
         cl  = self.cfg.check_left_frames
         cr  = self.cfg.check_right_frames
@@ -256,47 +259,95 @@ class SignBehaviorFSM:
         phase_b_settle = phase_b_end + cs
         phase_c_end    = phase_b_settle + cl
 
+        def is_stationary(offsets, threshold=0.05):
+            if len(offsets) < 2:
+                return True
+            return (max(offsets) - min(offsets)) < threshold
+
+        # Look left
         if c < phase_a_end:
-            if self._vehicle_detected(self, detections):
-                self._vehicle_seen_left = True
             self._check_counter += 1
             return -spd, spd
 
+        # Hold left
         elif c < phase_a_settle:
-            if self._vehicle_detected(self, detections):
+            seen, offset = self._vehicle_detected(detections)
+            if seen:
                 self._vehicle_seen_left = True
+                self._left_offsets.append(offset)
+
             self._check_counter += 1
             return 0.0, 0.0
 
+        # Sweep to right
         elif c < phase_b_end:
-            if self._vehicle_detected(self, detections):
-                self._vehicle_seen_right = True
             self._check_counter += 1
             return spd, -spd
 
+        # Hold right
         elif c < phase_b_settle:
-            if self._vehicle_detected(self, detections):
+            seen, offset = self._vehicle_detected(detections)
+            if seen:
                 self._vehicle_seen_right = True
+                self._right_offsets.append(offset)
+
             self._check_counter += 1
             return 0.0, 0.0
 
+        # Re-center
         elif c < phase_c_end:
             self._check_counter += 1
             return -spd, spd
 
+        # Decision
         else:
-            if self._vehicle_seen_left or self._vehicle_seen_right:
-                print("[SignBehavior] vehicle seen during sweep — redoing check")
-                self._check_counter      = 0
-                self._vehicle_seen_left  = False
+            left_stationary = is_stationary(self._left_offsets)
+            right_stationary = is_stationary(self._right_offsets)
+
+            # Moving vehicle on left
+            if self._vehicle_seen_left and not left_stationary:
+                print("[SignBehavior] moving vehicle on left — waiting")
+                self._check_counter = 0
+                self._vehicle_seen_left = False
                 self._vehicle_seen_right = False
+                self._left_offsets.clear()
+                self._right_offsets.clear()
                 return 0.0, 0.0
 
+            # Moving vehicle on right
+            if self._vehicle_seen_right and not right_stationary:
+                print("[SignBehavior] moving vehicle on right — waiting")
+                self._check_counter = 0
+                self._vehicle_seen_left = False
+                self._vehicle_seen_right = False
+                self._left_offsets.clear()
+                self._right_offsets.clear()
+                return 0.0, 0.0
+
+            # Stopped robot on right gets priority
+            if self._vehicle_seen_right and right_stationary:
+                print("[SignBehavior] stopped vehicle on right — yielding")
+                self._check_counter = 0
+                self._vehicle_seen_left = False
+                self._vehicle_seen_right = False
+                self._left_offsets.clear()
+                self._right_offsets.clear()
+                return 0.0, 0.0
+
+            # Stopped robot on left => we go
+            if self._vehicle_seen_left and left_stationary:
+                print("[SignBehavior] stopped vehicle on left — taking priority")
+
             self._turn_counter = 0
-            self.state         = State.POST_STOP
+            self.state = State.POST_STOP
+
+            self._vehicle_seen_left = False
+            self._vehicle_seen_right = False
+            self._left_offsets.clear()
+            self._right_offsets.clear()
+
             print("[SignBehavior] >>> path clear — POST_STOP")
             return 0.0, 0.0
-
 
     # ------------------------------------------------------------------
     # INTERSECT

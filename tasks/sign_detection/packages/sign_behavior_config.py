@@ -5,8 +5,8 @@ from typing import Dict, List, Tuple
 # Tag ID -> meaning
 class TagID(IntEnum):
     STOP            = 12
-    YIELD           = 10
-    TURN_LEFT_FWD   = 1
+    YIELD           = 1
+    TURN_LEFT_FWD   = 10
     TURN_LEFT_RIGHT = 3
     TURN_RIGHT_FWD  = 4
     TURN_ALL        = 5
@@ -64,7 +64,7 @@ class SignBehaviorConfig:
     check_settle_frames = 5
 
     # POST_STOP
-    post_stop_frames = 15 # prev 12
+    post_stop_frames = 20 # prev 12
     post_stop_speed  = 0.2
 
     # Pre-turn forward creep 
