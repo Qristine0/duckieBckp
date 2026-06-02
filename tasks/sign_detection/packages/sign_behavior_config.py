@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 class TagID(IntEnum):
     STOP            = 1
     YIELD           = 12
-    TURN_LEFT_FWD   = 10
+    TURN_LEFT_FWD   = 12
     TURN_LEFT_RIGHT = 3
     TURN_RIGHT_FWD  = 4
     TURN_ALL        = 5
@@ -64,7 +64,7 @@ class SignBehaviorConfig:
     check_settle_frames = 5
 
     # POST_STOP
-    post_stop_frames = 20 # prev 12
+    post_stop_frames = 25 # prev 12
     post_stop_speed  = 0.2
 
     # Pre-turn forward creep 

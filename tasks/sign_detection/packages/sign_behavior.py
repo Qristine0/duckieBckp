@@ -271,10 +271,11 @@ class SignBehaviorFSM:
 
         # Hold left
         elif c < phase_a_settle:
-            seen, offset = self._vehicle_detected(detections)
-            if seen:
-                self._vehicle_seen_left = True
-                self._left_offsets.append(offset)
+            if c > phase_a_end + 2:
+                seen, offset = self._vehicle_detected(detections)
+                if seen:
+                    self._vehicle_seen_left = True
+                    self._left_offsets.append(offset)
 
             self._check_counter += 1
             return 0.0, 0.0
@@ -286,10 +287,11 @@ class SignBehaviorFSM:
 
         # Hold right
         elif c < phase_b_settle:
-            seen, offset = self._vehicle_detected(detections)
-            if seen:
-                self._vehicle_seen_right = True
-                self._right_offsets.append(offset)
+            if c > phase_b_end + 2:
+                seen, offset = self._vehicle_detected(detections)
+                if seen:
+                    self._vehicle_seen_right = True
+                    self._right_offsets.append(offset)
 
             self._check_counter += 1
             return 0.0, 0.0

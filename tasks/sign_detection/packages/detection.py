@@ -63,7 +63,7 @@ def detect_obstacles(frame_rgb: np.ndarray) -> list:
 # =========================================================
 # VEHICLE DETECTION (intersection crossing check)
 # =========================================================
-vehicle_min_bbox_area = 1000
+vehicle_min_bbox_area = 800
 
 def vehicle_detected(detections):
     for (x1, y1, x2, y2), score, cls_id in detections:
@@ -106,12 +106,12 @@ def should_stop(
             if cx < EMERGENCY_CX_MIN or cx > EMERGENCY_CX_MAX:       continue
             if y2 < EMERGENCY_Y2_MIN:                                 continue
 
-            print(f"[ObstacleStop] DUCKIE STOP (area={area:.0f})")
-            return True, "duckie too close"
+            # print(f"[ObstacleStop] DUCKIE STOP (area={area:.0f})")
+            # return True, "duckie too close"
 
         # ── TRUCK ────────────────────────────────────────────
         if cls_id == 1:
-            if area   < 800:                                         continue
+            if area   < 3000:                                         continue
             if height < 15:                                           continue
             if cy     < IMG_HEIGHT * 0.25:                            continue
             if cx < 0.08 * IMG_WIDTH or cx > 0.92 * IMG_WIDTH:       continue
