@@ -4,8 +4,8 @@ from typing import Dict, List, Tuple
 
 # Tag ID -> meaning
 class TagID(IntEnum):
-    STOP            = 12
-    YIELD           = 1
+    STOP            = 1
+    YIELD           = 12
     TURN_LEFT_FWD   = 10
     TURN_LEFT_RIGHT = 3
     TURN_RIGHT_FWD  = 4
@@ -39,8 +39,8 @@ class State(IntEnum):
 @dataclass
 class SignBehaviorConfig:
     # Red-line detection
-    red_strip_frac  = 0.50
-    red_pixel_frac  = 0.03
+    red_strip_frac = 0.55  # bottom 45%
+    red_pixel_frac = 0.045  # 4.5% red pixels
     red_hsv_low1    = (0,   120,  80)   # type: Tuple[int, int, int]
     red_hsv_high1   = (10,  255, 255)   # type: Tuple[int, int, int]
     red_hsv_low2    = (170, 120,  80)   # type: Tuple[int, int, int]
