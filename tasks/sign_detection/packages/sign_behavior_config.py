@@ -50,7 +50,7 @@ _TAG_TURNS = {
     TagID.TURN_LEFT_FWD:   ["left", "forward"],
     # TagID.TURN_LEFT_FWD:   ["left"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
-    TagID.TURN_ALL:        ["left",  "right", "forward"],
+    TagID.TURN_ALL:        ["left"],
 }  # type: Dict[int, List[str]]
 
 

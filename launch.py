@@ -324,8 +324,8 @@ def _bot_host(target):
 
 def package_task(task_name):
     print(f"Packaging task: {task_name}")
-    # task_packages_dir = os.path.join(PROJECT_ROOT, 'tasks', task_name, 'packages')
-    task_packages_dir = os.path.join(PROJECT_ROOT, 'tasks')
+    task_packages_dir = os.path.join(PROJECT_ROOT, 'tasks', task_name, 'packages')
+    # task_packages_dir = os.path.join(PROJECT_ROOT, 'tasks')
     config_dir = os.path.join(PROJECT_ROOT, 'config')
 
     if not os.path.exists(task_packages_dir):
