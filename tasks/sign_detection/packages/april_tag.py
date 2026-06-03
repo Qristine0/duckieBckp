@@ -10,12 +10,16 @@ tag_confirm_frames = 2
 #   for i in [1,4,9,10,11]: print(i, hex(int.from_bytes(bytes(d.bytesList[i].flatten()[:5]),'big') >> 4))
 _CODES_36H11 = {
     0xd97f18b49: 1,
-    0xe479e9c98: 4,
-    0xf6c69b971: 9,
-    0xfa6f8bf36: 10,
-    0xfe187c4fb: 11,
+    0xebcbca822: 4,   # was 0xe479e9c98 (that's ID 3)
+    0x265ad0472: 9,   # was 0xf6c69b971 (invalid)
+    0x34fe91b86: 10,  # was 0xfa6f8bf36 (invalid)
+    0x3ff962cd5: 11,  # was 0xfe187c4fb (invalid)
+    0x81da494af: 20,
+    0xa2cabc89c: 24,
+    0xadc58d9eb: 25,
+    0xb16e7dfb0: 26,
+    0x9f53856b5: 39,
 }
-
 
 def _order_corners(pts):
     """Sort 4 points into TL, TR, BR, BL order."""

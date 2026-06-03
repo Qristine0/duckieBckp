@@ -4,53 +4,34 @@ from typing import Dict, List, Tuple
 
 
 
-# For real bot
 class TagID(IntEnum):
-    STOP            = 2
-    YIELD           = 11
-    TURN_LEFT_FWD   = 1
-    TURN_LEFT_RIGHT = 11
-    TURN_RIGHT_FWD  = 4
-    TURN_ALL        = 9
-        
-    
-# Tag ID -> meaning (for simulation)
-# class TagID(IntEnum):
-#     STOP            = 11
-#     YIELD           = 11
-#     TURN_LEFT_FWD   = 10
-#     TURN_LEFT_RIGHT = 3
-#     TURN_RIGHT_FWD  = 4
-#     TURN_ALL        = 1
+    TURN_RIGHT_FWD  = 9   # right_forward
+    TURN_LEFT_FWD   = 10  # left_forward
+    TURN_LEFT_RIGHT = 11  # leftRight
+    STOP            = 26  # stop
+    YIELD           = 39  # yield
 
-# Maps each TagID to the set of raw integer IDs that trigger it
-# _TAG_ID_MAP: Dict[int, TagID] = {
-#     # STOP
-#     5:  TagID.STOP,
-#     11: TagID.STOP,
-#     # YIELD
-#     22: TagID.YIELD,
-#     # TURN_LEFT_FWD
-#     10: TagID.TURN_LEFT_FWD,
-#     # TURN_LEFT_RIGHT
-#     3:  TagID.TURN_LEFT_RIGHT,
-#     # TURN_RIGHT_FWD
-#     4:  TagID.TURN_RIGHT_FWD,
-#     # TURN_ALL
-#     1:  TagID.TURN_ALL,
-# }
+# Maps every detected raw integer to a TagID (multiple stop variants all resolve to STOP)
+_TAG_ID_MAP: Dict[int, TagID] = {
+    9:  TagID.TURN_RIGHT_FWD,
+    10: TagID.TURN_LEFT_FWD,
+    11: TagID.TURN_LEFT_RIGHT,
+    20: TagID.STOP,
+    24: TagID.STOP,
+    25: TagID.STOP,
+    26: TagID.STOP,
+    39: TagID.YIELD,
+}
 
-# def resolve_tag(raw_id: int):
-#     # type: (int) -> TagID | None
-#     """Map a raw detected integer tag ID to a TagID enum value, or None if unknown."""
-#     return _TAG_ID_MAP.get(raw_id)
+def resolve_tag(raw_id: int):
+    # type: (int) -> TagID | None
+    """Map a raw detected integer tag ID to a TagID enum value, or None if unknown."""
+    return _TAG_ID_MAP.get(raw_id)
 
 _TAG_TURNS = {
-    TagID.TURN_LEFT_RIGHT: ["left",  "right"],
+    TagID.TURN_LEFT_RIGHT: ["left", "right"],
     TagID.TURN_LEFT_FWD:   ["left", "forward"],
-    # TagID.TURN_LEFT_FWD:   ["left"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
-    TagID.TURN_ALL:        ["left"],
 }  # type: Dict[int, List[str]]
 
 
