@@ -6,9 +6,9 @@ from typing import Dict, List, Tuple
 
 # For real bot
 class TagID(IntEnum):
-    STOP            = 1
+    STOP            = 2
     YIELD           = 11
-    TURN_LEFT_FWD   = 10
+    TURN_LEFT_FWD   = 1
     TURN_LEFT_RIGHT = 11
     TURN_RIGHT_FWD  = 4
     TURN_ALL        = 9
