@@ -324,7 +324,8 @@ def _bot_host(target):
 
 def package_task(task_name):
     print(f"Packaging task: {task_name}")
-    task_packages_dir = os.path.join(PROJECT_ROOT, 'tasks', task_name, 'packages')
+    # task_packages_dir = os.path.join(PROJECT_ROOT, 'tasks', task_name, 'packages')
+    task_packages_dir = os.path.join(PROJECT_ROOT, 'tasks')
     config_dir = os.path.join(PROJECT_ROOT, 'config')
 
     if not os.path.exists(task_packages_dir):
@@ -336,7 +337,7 @@ def package_task(task_name):
             return None
         return tarinfo
 
-    task_models_dir = os.path.join(PROJECT_ROOT, 'tasks', task_name, 'models')
+    # task_models_dir = os.path.join(PROJECT_ROOT, 'tasks', task_name, 'models')
 
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode='w:gz') as tar:
@@ -349,9 +350,9 @@ def package_task(task_name):
         if os.path.exists(config_dir):
             print(f"   Adding configs: config/")
             tar.add(config_dir, arcname='config', filter=no_pycache)
-        if os.path.exists(task_models_dir):
-            print(f"   Adding models: tasks/{task_name}/models/")
-            tar.add(task_models_dir, arcname=f'tasks/{task_name}/models', filter=no_pycache)
+        # if os.path.exists(task_models_dir):
+        #     print(f"   Adding models: tasks/{task_name}/models/")
+        #     tar.add(task_models_dir, arcname=f'tasks/{task_name}/models', filter=no_pycache)
 
     buf.seek(0)
     print("Package created!")

@@ -2,20 +2,53 @@ from dataclasses import dataclass
 from enum import IntEnum, auto
 from typing import Dict, List, Tuple
 
-# Tag ID -> meaning
+
+
+# For real bot
 class TagID(IntEnum):
     STOP            = 1
-    YIELD           = 12
-    TURN_LEFT_FWD   = 12
-    TURN_LEFT_RIGHT = 3
+    YIELD           = 11
+    TURN_LEFT_FWD   = 10
+    TURN_LEFT_RIGHT = 11
     TURN_RIGHT_FWD  = 4
-    TURN_ALL        = 5
+    TURN_ALL        = 9
+        
+    
+# Tag ID -> meaning (for simulation)
+# class TagID(IntEnum):
+#     STOP            = 11
+#     YIELD           = 11
+#     TURN_LEFT_FWD   = 10
+#     TURN_LEFT_RIGHT = 3
+#     TURN_RIGHT_FWD  = 4
+#     TURN_ALL        = 1
 
+# Maps each TagID to the set of raw integer IDs that trigger it
+# _TAG_ID_MAP: Dict[int, TagID] = {
+#     # STOP
+#     5:  TagID.STOP,
+#     11: TagID.STOP,
+#     # YIELD
+#     22: TagID.YIELD,
+#     # TURN_LEFT_FWD
+#     10: TagID.TURN_LEFT_FWD,
+#     # TURN_LEFT_RIGHT
+#     3:  TagID.TURN_LEFT_RIGHT,
+#     # TURN_RIGHT_FWD
+#     4:  TagID.TURN_RIGHT_FWD,
+#     # TURN_ALL
+#     1:  TagID.TURN_ALL,
+# }
+
+# def resolve_tag(raw_id: int):
+#     # type: (int) -> TagID | None
+#     """Map a raw detected integer tag ID to a TagID enum value, or None if unknown."""
+#     return _TAG_ID_MAP.get(raw_id)
 
 _TAG_TURNS = {
     TagID.TURN_LEFT_RIGHT: ["left",  "right"],
-    # TagID.TURN_LEFT_FWD:   ["left", "forward"],
-    TagID.TURN_LEFT_FWD:   ["left"],
+    TagID.TURN_LEFT_FWD:   ["left", "forward"],
+    # TagID.TURN_LEFT_FWD:   ["left"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
     TagID.TURN_ALL:        ["left",  "right", "forward"],
 }  # type: Dict[int, List[str]]

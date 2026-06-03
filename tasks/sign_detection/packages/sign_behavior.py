@@ -1,8 +1,3 @@
-"""
-sign_behavior.py
-================
-AprilTag-based sign detection and intersection state machine for Duckiebot.
-"""
 import random
 from typing import Dict, List, Optional, Tuple
 import numpy as np
@@ -100,6 +95,7 @@ class SignBehaviorFSM:
             self._slow_factor = 1.0
 
             for tag_id in confirmed_tags:
+                # tag_id = resolve_tag(tag_id)
                 if tag_id in _TAG_TURNS:
                     if self._saved_tag != tag_id:
                         print(f"[SignBehavior] sign saved: intersection tag {tag_id} "
@@ -108,6 +104,7 @@ class SignBehaviorFSM:
                     break
             else:
                 for tag_id in confirmed_tags:
+                    # tag_id = resolve_tag(tag_id)
                     if tag_id in (int(TagID.STOP), int(TagID.YIELD)):
                         if self._saved_tag != tag_id:
                             label = "STOP" if tag_id == TagID.STOP else "YIELD"
