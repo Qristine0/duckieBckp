@@ -47,6 +47,8 @@ class SignBehaviorFSM:
         self._left_offsets = []
         self._right_offsets = []
 
+        self._active_sign_op = None  # type: Optional[str]
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -119,6 +121,7 @@ class SignBehaviorFSM:
                 if tag in _TAG_TURNS:
                     self._possible_turns = _TAG_TURNS[tag]
                     self._chosen_turn    = self._pick_turn()
+                    self._active_sign_op = f"intersection turn '{self._chosen_turn}'"
                     self._turn_counter   = 0
                     self._saved_tag      = None
                     self.state           = State.INTERSECT
@@ -134,6 +137,8 @@ class SignBehaviorFSM:
 
                 # Yield same as stop
                 elif tag == int(TagID.STOP) or tag == int(TagID.YIELD):
+                    label = "STOP" if tag == int(TagID.STOP) else "YIELD"
+                    self._active_sign_op = f"{label} sign"
                     self._slow_factor  = 0.5
                     self._slow_target  = 0.0
                     self._saved_tag    = None
@@ -141,10 +146,11 @@ class SignBehaviorFSM:
                     print(f"[SignBehavior] >>> STOP — full stop before red line "
                           f"(saved_tag={tag})")
                 else:
-                    self._chosen_turn  = "forward"
-                    self._turn_counter = 0
-                    self._saved_tag    = None
-                    self.state         = State.INTERSECT
+                    self._chosen_turn    = "forward"
+                    self._active_sign_op = "intersection turn 'forward' (no tag)"
+                    self._turn_counter   = 0
+                    self._saved_tag      = None
+                    self.state           = State.INTERSECT
                     print(f"[SignBehavior] >>> INTERSECT — direction: {self._chosen_turn} "
                           f"(No tag (Default behavior))")
 
@@ -219,6 +225,7 @@ class SignBehaviorFSM:
             self._red_line_locked = False
             self.state            = State.MOVING
             print("[SignBehavior] >>> POST_STOP done — MOVING (red-line unlocked)")
+            print(f"[SignBehavior] COMPLETE: {self._active_sign_op} — robot resumed driving")
             return base_left, base_right
 
         # INTERSECT
@@ -410,7 +417,7 @@ class SignBehaviorFSM:
     def _exiting_step(self, base_left, base_right):
         self._turn_counter += 1
         if self._turn_counter >= self.cfg.exit_timeout_frames:
-            print("[SignBehavior] EXITING: timeout — MOVING")
+            print(f"[SignBehavior] COMPLETE: {self._active_sign_op} — robot resumed driving")
             self._red_line_locked = False
             self._possible_turns  = []
             self._chosen_turn     = None
