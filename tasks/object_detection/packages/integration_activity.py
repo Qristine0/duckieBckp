@@ -6,24 +6,42 @@ MODEL_PATH = "tasks/object_detection/models/best.onnx"
 
 
 def NUMBER_FRAMES_SKIPPED() -> int:
-    # Higher = run inference less often (cheaper).
+    # 0 = run detection every frame.
+    # For real bot, you can later try 1 or 2 if it becomes slow.
     return 0
 
 
-#  0, 1, 2 - ['duckie', 'truck', 'sign']
 def filter_by_classes(pred_class: int) -> bool:
-    """Return False to drop this prediction."""
-    # return pred_class == 0
-    return True
+    """
+    Classes:
+        0 = duckie
+        1 = truck
+        2 = sign
+    """
+    return pred_class in (0, 1, 2)
 
 
 def filter_by_scores(score: float) -> bool:
-    """Confidence in [0.0, 1.0]. Return False to drop low-confidence boxes."""
-    return score > 0.5
+    """
+    Generic score filter.
+    Class-specific score filtering is also done inside agent.py.
+    """
+    return score >= 0.20
 
 
 def filter_by_bboxes(bbox: Tuple[int, int, int, int]) -> bool:
-    """bbox is (xmin, ymin, xmax, ymax) in pixels. Return False to drop."""
+    """
+    Generic bbox filter.
+    Class-specific duck/truck/sign filters are inside agent.py.
+    """
     xmin, ymin, xmax, ymax = bbox
-    area = (xmax - xmin) * (ymax - ymin)
-    return area > 400
+
+    box_w = xmax - xmin
+    box_h = ymax - ymin
+
+    if box_w <= 3 or box_h <= 3:
+        return False
+
+    area = box_w * box_h
+
+    return area > 80

@@ -1,3 +1,13 @@
-img_size: 416
-conf_threshold: 0.7
+img_size: 640
+conf_threshold: 0.25
 nms_threshold: 0.45
+
+duck_conf_threshold: 0.30
+truck_conf_threshold: 0.30
+sign_conf_threshold: 0.35
+
+duck_min_height_ratio: 0.025
+duck_min_area_ratio: 0.0006
+duck_max_width_height_ratio: 2.60
+duck_max_height_width_ratio: 4.00
+duck_ignore_top_ratio: 0.20
