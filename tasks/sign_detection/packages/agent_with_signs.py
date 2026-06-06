@@ -36,6 +36,27 @@ class LaneServoingAgentWithSigns(LaneServoingAgent):
         cfg = sign_config or SignBehaviorConfig()
         self._sign_fsm = SignBehaviorFSM(config=cfg)
 
+    def reset_behavior(self):
+        if hasattr(self, "_sign_fsm") and self._sign_fsm is not None:
+            self._sign_fsm.reset()
+
+        self._prev_error = 0.0
+        self._filtered_error = 0.0
+
+        if hasattr(self, "_filtered_lateral_error"):
+            self._filtered_lateral_error = 0.0
+
+        if hasattr(self, "_filtered_heading_error"):
+            self._filtered_heading_error = 0.0
+
+        if hasattr(self, "_filtered_steering"):
+            self._filtered_steering = 0.0
+
+        if hasattr(self, "_lost_frames"):
+            self._lost_frames = 0
+
+        print("[LaneAgent] behavior reset")
+
     # ------------------------------------------------------------------
     # Override compute_commands
     # ------------------------------------------------------------------

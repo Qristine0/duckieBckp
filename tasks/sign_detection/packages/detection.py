@@ -366,3 +366,23 @@ def should_stop(
         return True, reason or "stop latch active"
 
     return False, ""
+
+def reset_detection_state():
+    global _duck_counter, _truck_counter, _stop_latch
+
+    try:
+        _duck_counter = 0
+    except NameError:
+        pass
+
+    try:
+        _truck_counter = 0
+    except NameError:
+        pass
+
+    try:
+        _stop_latch = 0
+    except NameError:
+        pass
+
+    print("[Detection] state reset")

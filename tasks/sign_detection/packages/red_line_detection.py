@@ -5,12 +5,11 @@ import cv2
 def detect_red_line(signBehavior, frame_rgb: np.ndarray) -> bool:
     h, w = frame_rgb.shape[:2]
 
-    # Smaller bottom ROI means the red line must be closer before detection.
     strip_h = max(2, int(h * signBehavior.cfg.red_strip_frac))
 
-    # Look only around the center of the driving lane.
-    l = int(w * 0.30)
-    r = int(w * 0.70)
+    # Look in front/middle road area, not whole image.
+    l = int(w * 0.24)
+    r = int(w * 0.76)
 
     strip = frame_rgb[h - strip_h:, l:r]
     strip_h_actual, strip_w_actual = strip.shape[:2]
@@ -24,33 +23,66 @@ def detect_red_line(signBehavior, frame_rgb: np.ndarray) -> bool:
 
     mask = cv2.inRange(hsv, lo1, hi1) | cv2.inRange(hsv, lo2, hi2)
 
-    # Remove small red noise.
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 3))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-    # Important:
-    # Only check the lower part of the ROI.
-    # This prevents stopping when the red line is still far away.
-    near_start = int(strip_h_actual * 0.55)
-    near_mask = mask[near_start:, :]
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    near_pixels = float(np.count_nonzero(near_mask))
-    near_area = float(near_mask.shape[0] * near_mask.shape[1])
+    close_ratio = getattr(signBehavior.cfg, "red_line_close_y2_ratio", 0.82)
 
-    if near_area <= 0:
-        return False
+    best = None
 
-    near_fraction = near_pixels / near_area
-    threshold = signBehavior.cfg.red_pixel_frac
+    for cnt in contours:
+        area = float(cv2.contourArea(cnt))
 
-    detected = near_fraction >= threshold
+        if area < 80:
+            continue
 
-    if detected:
+        x, y, bw, bh = cv2.boundingRect(cnt)
+
+        if bw <= 0 or bh <= 0:
+            continue
+
+        y2 = y + bh
+        aspect = bw / float(bh)
+
+        # Red stop line must look mostly horizontal.
+        if aspect < 1.8:
+            continue
+
+        # Ignore tiny red fragments.
+        if bw < strip_w_actual * 0.12:
+            continue
+
+        # Main closeness rule.
+        # Bigger close_ratio = stop later / closer.
+        if y2 < strip_h_actual * close_ratio:
+            continue
+
+        score = area * aspect
+
+        if best is None or score > best["score"]:
+            best = {
+                "area": area,
+                "x": x,
+                "y": y,
+                "w": bw,
+                "h": bh,
+                "y2": y2,
+                "aspect": aspect,
+                "score": score,
+            }
+
+    if best is not None:
         print(
             f"[SignBehavior] red line close — "
-            f"near={near_fraction:.3f}(thr={threshold:.3f}) "
-            f"roi_h={strip_h_actual}"
+            f"area={best['area']:.0f}, "
+            f"bbox=({best['x']},{best['y']},{best['w']},{best['h']}), "
+            f"y2_ratio={best['y2'] / strip_h_actual:.2f}, "
+            f"required={close_ratio:.2f}, "
+            f"aspect={best['aspect']:.2f}"
         )
+        return True
 
-    return detected
+    return False

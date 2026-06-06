@@ -19,8 +19,12 @@ from flask import Flask, Response, render_template_string, jsonify, request
 
 from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent
 
-from detection import detect_obstacles, CLASS_NAMES
-from detection import should_stop as student_should_stop
+from tasks.sign_detection.packages.detection import (
+    detect_obstacles,
+    CLASS_NAMES,
+    reset_detection_state,
+)
+from tasks.sign_detection.packages.detection import should_stop as student_should_stop
 
 from servers.templates.sign_detection import SIGN_DETECTION_TEMPLATE as HTML_TEMPLATE
 
@@ -167,12 +171,32 @@ def index():
 def video():
     return Response(generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
+def reset_runtime_state():
+    global _last_detections, _stopped_by_det, _stop_reason
+
+    with _detection_lock:
+        _last_detections = []
+
+    _stopped_by_det = False
+    _stop_reason = ""
+
+    reset_detection_state()
+
+    if lane_agent is not None and hasattr(lane_agent, "reset_behavior"):
+        lane_agent.reset_behavior()
+
+    if wheels is not None:
+        wheels.set_wheels_speed(0.0, 0.0)
+
+    print("[Server] runtime state reset")
 
 @app.route("/start", methods=["POST"])
 def start():
     global running
 
+    reset_runtime_state()
     running = True
+
     return jsonify({"status": "running"})
 
 
@@ -182,7 +206,7 @@ def stop():
 
     running = False
 
-    if wheels:
+    if wheels is not None:
         wheels.set_wheels_speed(0.0, 0.0)
 
     return jsonify({"status": "stopped"})
