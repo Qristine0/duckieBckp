@@ -6,36 +6,23 @@ import numpy as np
 import yaml
 
 
-def _find_config_file() -> str:
-    config_dir = os.path.normpath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "config")
+HSV_FILE = os.path.normpath(
+    os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "..",
+        "..",
+        "config",
+        "lane_servoing_hsv_config.yaml",
     )
+)
 
-    yaml_path = os.path.join(config_dir, "lane_servoing_hsv_config.yaml")
-    yml_path = os.path.join(config_dir, "lane_servoing_hsv_config.yml")
+try:
+    with open(HSV_FILE, "r") as f:
+        _h = yaml.safe_load(f) or {}
+except FileNotFoundError:
+    _h = {}
 
-    if os.path.exists(yaml_path):
-        return yaml_path
-
-    return yml_path
-
-
-HSV_FILE = _find_config_file()
-
-
-def _load_hsv_config() -> dict:
-    try:
-        with open(HSV_FILE, "r") as f:
-            return yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        print(f"[LaneDetection] HSV config not found: {HSV_FILE}")
-        return {}
-    except Exception as exc:
-        print(f"[LaneDetection] Could not load HSV config: {exc}")
-        return {}
-
-
-_h = _load_hsv_config()
 
 _yellow_lower = np.array([
     _h.get("yellow_lower_h", 18),
@@ -44,7 +31,7 @@ _yellow_lower = np.array([
 ], dtype=np.uint8)
 
 _yellow_upper = np.array([
-    _h.get("yellow_upper_h", 40),
+    _h.get("yellow_upper_h", 42),
     _h.get("yellow_upper_s", 255),
     _h.get("yellow_upper_v", 255),
 ], dtype=np.uint8)
@@ -52,99 +39,168 @@ _yellow_upper = np.array([
 _white_lower = np.array([
     _h.get("white_lower_h", 0),
     _h.get("white_lower_s", 0),
-    _h.get("white_lower_v", 140),
+    _h.get("white_lower_v", 205),
 ], dtype=np.uint8)
 
 _white_upper = np.array([
     _h.get("white_upper_h", 179),
-    _h.get("white_upper_s", 90),
+    _h.get("white_upper_s", 42),
     _h.get("white_upper_v", 255),
 ], dtype=np.uint8)
 
 
-def _roi_mask(height: int, width: int) -> np.ndarray:
-    mask = np.zeros((height, width), dtype=np.uint8)
+_ROI_START = 0.42
 
-    # We only care about the lower part of the image where the road is.
-    roi_start = int(height * 0.45)
-    mask[roi_start:, : ] = 255
+# Hide left white line. Use 0.42 because on curves the right white line can move toward center.
+_IGNORE_WHITE_LEFT_UNTIL = 0.42
 
-    return mask
-
-
-def _clean_mask(mask: np.ndarray) -> np.ndarray:
-    k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-
-    cleaned = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_open)
-    cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_CLOSE, k_close)
-
-    return cleaned
+# White filtering.
+# Gray floor should fail because it is not bright enough / not neutral enough.
+_WHITE_MIN_BGR = 145
+_WHITE_MAX_CHANNEL_DIFF = 70
 
 
-def _detect_from_hsv(hsv: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    h, w = hsv.shape[:2]
-    roi = _roi_mask(h, w)
+def _clean_mask(mask: np.ndarray, open_size: int = 3, close_size: int = 5) -> np.ndarray:
+    k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_size, open_size))
+    k_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close_size, close_size))
 
-    raw_yellow = cv2.inRange(hsv, _yellow_lower, _yellow_upper)
-    raw_white = cv2.inRange(hsv, _white_lower, _white_upper)
+    clean = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k_open)
+    clean = cv2.morphologyEx(clean, cv2.MORPH_CLOSE, k_close)
 
-    raw_yellow = cv2.bitwise_and(raw_yellow, roi)
-    raw_white = cv2.bitwise_and(raw_white, roi)
-
-    # Hide far-left white line.
-    # Do NOT use 0.52 here, because on curves the correct right white line
-    # can move closer to the center. 0.40 is safer.
-    ignore_left_until_x = int(w * 0.40)
-    raw_white[:, :ignore_left_until_x] = 0
-
-    clean_yellow = _clean_mask(raw_yellow)
-    clean_white = _clean_mask(raw_white)
-
-    return clean_yellow, clean_white
+    return clean
 
 
-def _mask_score(yellow_mask: np.ndarray, white_mask: np.ndarray) -> int:
-    yellow_pixels = int(np.count_nonzero(yellow_mask))
-    white_pixels = int(np.count_nonzero(white_mask))
+def _filter_white_components(mask: np.ndarray, h: int, w: int) -> np.ndarray:
+    output = np.zeros_like(mask)
 
-    # Yellow is more useful for detecting whether the channel order is correct.
-    return yellow_pixels * 2 + white_pixels
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+
+        if area < 70:
+            continue
+
+        x, y, bw, bh = cv2.boundingRect(cnt)
+
+        if bw <= 2 or bh <= 2:
+            continue
+
+        x2 = x + bw
+        y2 = y + bh
+        cx = x + bw / 2.0
+
+        bbox_area = bw * bh
+        fill_ratio = area / float(bbox_area + 1e-6)
+
+        rect = cv2.minAreaRect(cnt)
+        rw, rh = rect[1]
+
+        if rw <= 1 or rh <= 1:
+            long_aspect = max(bw, bh) / float(min(bw, bh) + 1e-6)
+        else:
+            long_aspect = max(rw, rh) / float(min(rw, rh) + 1e-6)
+
+        # Ignore far/top noise.
+        if y2 < h * 0.44:
+            continue
+
+        # Ignore left white line.
+        # Component must be mostly on the right/front side.
+        if cx < w * _IGNORE_WHITE_LEFT_UNTIL and x2 < w * 0.58:
+            continue
+
+        # Reject huge filled bright blobs from floor/reflection.
+        if bw > w * 0.38 and bh > h * 0.16 and fill_ratio > 0.55:
+            continue
+
+        # White road line should be elongated or tall.
+        if long_aspect < 1.35 and bh < h * 0.16:
+            continue
+
+        # Reject tiny short pieces.
+        if bh < h * 0.035 and bw < w * 0.08:
+            continue
+
+        cv2.drawContours(output, [cnt], -1, 255, thickness=cv2.FILLED)
+
+    return output
+
+
+def _filter_yellow_components(mask: np.ndarray, h: int, w: int) -> np.ndarray:
+    output = np.zeros_like(mask)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+
+        if area < 25:
+            continue
+
+        x, y, bw, bh = cv2.boundingRect(cnt)
+
+        if bw <= 2 or bh <= 2:
+            continue
+
+        y2 = y + bh
+
+        if y2 < h * 0.35:
+            continue
+
+        # Reject very large yellow blobs that are probably not lane dashes.
+        if bw > w * 0.35 and bh > h * 0.20:
+            continue
+
+        cv2.drawContours(output, [cnt], -1, 255, thickness=cv2.FILLED)
+
+    return output
 
 
 def detect_lane_markings(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Detect left yellow lane marking and right white lane marking.
-
-    The notebook says this function receives BGR images, but real/sim pipelines
-    can sometimes differ. To make this safer, we try both BGR and RGB HSV
-    conversions and keep the one with stronger lane evidence.
+    image is BGR. agent.py converts camera RGB -> BGR before calling this.
+    Returns:
+        yellow_mask, white_mask
     """
-    if image is None or image.size == 0:
-        raise ValueError("Input image is empty")
+    h, w = image.shape[:2]
 
-    if len(image.shape) != 3 or image.shape[2] != 3:
-        raise ValueError(f"Expected color image with shape HxWx3, got {image.shape}")
+    imghsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-    hsv_from_bgr = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    yellow_bgr, white_bgr = _detect_from_hsv(hsv_from_bgr)
+    roi_mask = np.zeros((h, w), dtype=np.uint8)
+    roi_mask[int(h * _ROI_START):, :] = 255
 
-    hsv_from_rgb = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
-    yellow_rgb, white_rgb = _detect_from_hsv(hsv_from_rgb)
+    raw_yellow = cv2.inRange(imghsv, _yellow_lower, _yellow_upper)
+    raw_white = cv2.inRange(imghsv, _white_lower, _white_upper)
 
-    score_bgr = _mask_score(yellow_bgr, white_bgr)
-    score_rgb = _mask_score(yellow_rgb, white_rgb)
+    raw_yellow = cv2.bitwise_and(raw_yellow, roi_mask)
+    raw_white = cv2.bitwise_and(raw_white, roi_mask)
 
-    if score_rgb > score_bgr:
-        yellow_mask = yellow_rgb
-        white_mask = white_rgb
-    else:
-        yellow_mask = yellow_bgr
-        white_mask = white_bgr
+    # Remove left-side white line before morphology.
+    raw_white[:, :int(w * _IGNORE_WHITE_LEFT_UNTIL)] = 0
+
+    # Extra white check:
+    # True white tape is bright and has similar B/G/R values.
+    min_channel = np.min(image, axis=2)
+    max_channel = np.max(image, axis=2)
+    channel_diff = max_channel - min_channel
+
+    bright_neutral = (
+        (min_channel >= _WHITE_MIN_BGR)
+        & (channel_diff <= _WHITE_MAX_CHANNEL_DIFF)
+    ).astype(np.uint8) * 255
+
+    raw_white = cv2.bitwise_and(raw_white, bright_neutral)
+
+    clean_yellow = _clean_mask(raw_yellow, open_size=3, close_size=5)
+    clean_white = _clean_mask(raw_white, open_size=3, close_size=7)
+
+    clean_yellow = _filter_yellow_components(clean_yellow, h, w)
+    clean_white = _filter_white_components(clean_white, h, w)
 
     return (
-        (yellow_mask > 0).astype(np.float32),
-        (white_mask > 0).astype(np.float32),
+        (clean_yellow > 0).astype(np.float32),
+        (clean_white > 0).astype(np.float32),
     )
 
 
