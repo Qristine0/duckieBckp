@@ -73,6 +73,7 @@ def _raw_detect(gray):
     Detect AprilTag 36h11 markers using only base OpenCV (no contrib/aruco).
     Returns list of {"tag_id": int, "corners": (4,2) float32 array}.
     """
+    # Blur then adaptive threshold to isolate dark tag borders
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
     thresh = cv2.adaptiveThreshold(
         blur, 255,
@@ -90,6 +91,7 @@ def _raw_detect(gray):
     seen = set()
 
     for cnt in contours:
+        # Keep only reasonably-sized convex quadrilaterals
         area = cv2.contourArea(cnt)
         if area < 300 or area > max_area:
             continue
@@ -99,6 +101,7 @@ def _raw_detect(gray):
         if len(approx) != 4 or not cv2.isContourConvex(approx):
             continue
 
+        # Warp to 80x80 canonical view and decode the tag bits
         src = _order_corners(approx.reshape(4, 2))
         M = cv2.getPerspectiveTransform(src, _DST_PTS)
         warped = cv2.warpPerspective(gray, M, (80, 80))

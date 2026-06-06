@@ -41,6 +41,7 @@ def _mask_to_bboxes(mask):
 # DETECTION
 # =========================================================
 def detect_obstacles(frame_rgb: np.ndarray) -> list:
+    # Threshold HSV for yellow (duckies) and blue (trucks)
     hsv = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2HSV)
 
     yellow_lower = np.array([18, 120, 120])
@@ -51,6 +52,7 @@ def detect_obstacles(frame_rgb: np.ndarray) -> list:
     blue_upper   = np.array([130, 255, 255])
     blue_mask    = cv2.inRange(hsv, blue_lower, blue_upper)
 
+    # Build detection list: (bbox, confidence, class_id)
     detections = []
     for x1, y1, x2, y2, area in _mask_to_bboxes(yellow_mask):
         detections.append(((x1, y1, x2, y2), min(1.0, area / 5000.0), 0))
@@ -98,16 +100,13 @@ def should_stop(
         cx     = (x1 + x2) / 2.0
         cy     = (y1 + y2) / 2.0
 
-        # ── DUCKIE ──────────────────────────────────────────
+        # ── DUCKIE — filtered out intentionally, does not stop the robot ──
         if cls_id == 0:
             if area   < 40000:                                        continue
             if height < MIN_OBJECT_HEIGHT:                            continue
             if height / (width + 1e-6) < MIN_HEIGHT_WIDTH_RATIO:     continue
             if cx < EMERGENCY_CX_MIN or cx > EMERGENCY_CX_MAX:       continue
             if y2 < EMERGENCY_Y2_MIN:                                 continue
-
-            # print(f"[ObstacleStop] DUCKIE STOP (area={area:.0f})")
-            # return True, "duckie too close"
 
         # ── TRUCK ────────────────────────────────────────────
         if cls_id == 1:

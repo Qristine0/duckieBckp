@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 from enum import IntEnum, auto
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
+# =========================================================
+# TAG IDENTITY
+# =========================================================
 
 class TagID(IntEnum):
     TURN_RIGHT_FWD  = 9   # right_forward
@@ -11,7 +14,7 @@ class TagID(IntEnum):
     STOP            = 26  # stop
     YIELD           = 39  # yield
 
-# Maps every detected raw integer to a TagID (multiple stop variants all resolve to STOP)
+# Multiple physical stop-sign variants all resolve to TagID.STOP
 _TAG_ID_MAP: Dict[int, TagID] = {
     9:  TagID.TURN_RIGHT_FWD,
     10: TagID.TURN_LEFT_FWD,
@@ -23,19 +26,22 @@ _TAG_ID_MAP: Dict[int, TagID] = {
     39: TagID.YIELD,
 }
 
-def resolve_tag(raw_id: int):
-    # type: (int) -> TagID | None
-    """Map a raw detected integer tag ID to a TagID enum value, or None if unknown."""
+def resolve_tag(raw_id: int) -> Optional[TagID]:
+    """Map a raw detected tag ID to a canonical TagID, or None if unknown."""
     return _TAG_ID_MAP.get(raw_id)
 
-_TAG_TURNS = {
+# Allowed turn directions per intersection tag
+_TAG_TURNS: Dict[int, List[str]] = {
     TagID.TURN_LEFT_RIGHT: ["left", "right"],
     TagID.TURN_LEFT_FWD:   ["left", "forward"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
-}  # type: Dict[int, List[str]]
+}
 
 
-# State enum
+# =========================================================
+# FSM STATE
+# =========================================================
+
 class State(IntEnum):
     MOVING      = auto()
     SLOWING     = auto()
@@ -49,7 +55,10 @@ class State(IntEnum):
     EXITING     = auto()
 
 
-# Config
+# =========================================================
+# BEHAVIOR CONFIG
+# =========================================================
+
 @dataclass
 class SignBehaviorConfig:
     # Red-line detection

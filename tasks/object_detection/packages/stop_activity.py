@@ -24,6 +24,9 @@ def should_stop(detections: List[Detection], img_size: int) -> Tuple[bool, str]:
         if cls_id == 0:  # duckie
             if box_cx < img_size * 0.25 or box_cx > img_size * 0.70:
                 continue
+            # Road dashes are wide and flat; ducks are roughly square or taller
+            if box_h / max(box_w, 1) < 0.5:
+                continue
             if y2 > 0.45 * img_size and box_h > 18:
                 stop = True
                 reason = f"duckie y2={y2} h={box_h}"

@@ -4,7 +4,7 @@ import numpy as np
 from tasks.sign_detection.packages.red_line_detection import detect_red_line
 from tasks.sign_detection.packages.april_tag import detect_tags, confirm_tags
 from tasks.sign_detection.packages.detection import vehicle_detected
-from tasks.sign_detection.packages.sign_behavior_config import TagID, _TAG_TURNS, SignBehaviorConfig, State
+from tasks.sign_detection.packages.sign_behavior_config import TagID, _TAG_TURNS, SignBehaviorConfig, State, resolve_tag
 
 # ---------------------------------------------------------------------------
 # FSM
@@ -91,13 +91,16 @@ class SignBehaviorFSM:
     # ------------------------------------------------------------------
     def _fsm_step(self, confirmed_tags, detections, red_line, base_left, base_right, frame_rgb):
         # type: (List[int], list, bool, float, float, np.ndarray) -> Tuple[float, float]
+        # Large if/elif dispatch — one branch per FSM state.
 
         # MOVING
         if self.state == State.MOVING:
             self._slow_factor = 1.0
 
-            for tag_id in confirmed_tags:
-                # tag_id = resolve_tag(tag_id)
+            # Resolve raw IDs and save the highest-priority tag seen this frame.
+            # Intersection turns take priority; STOP/YIELD are the fallback.
+            for raw_id in confirmed_tags:
+                tag_id = resolve_tag(raw_id)
                 if tag_id in _TAG_TURNS:
                     if self._saved_tag != tag_id:
                         print(f"[SignBehavior] sign saved: intersection tag {tag_id} "
@@ -105,9 +108,9 @@ class SignBehaviorFSM:
                     self._saved_tag = tag_id
                     break
             else:
-                for tag_id in confirmed_tags:
-                    # tag_id = resolve_tag(tag_id)
-                    if tag_id in (int(TagID.STOP), int(TagID.YIELD)):
+                for raw_id in confirmed_tags:
+                    tag_id = resolve_tag(raw_id)
+                    if tag_id in (TagID.STOP, TagID.YIELD):
                         if self._saved_tag != tag_id:
                             label = "STOP" if tag_id == TagID.STOP else "YIELD"
                             print(f"[SignBehavior] sign saved: {label}")
@@ -128,16 +131,9 @@ class SignBehaviorFSM:
                     print(f"[SignBehavior] >>> INTERSECT — direction: {self._chosen_turn} "
                           f"(from tag {tag}, options {self._possible_turns})")
 
-                # elif tag == int(TagID.YIELD):
-                #     self._slow_factor  = 1.0
-                #     self._slow_target  = self.cfg.yield_min_speed
-                #     self._saved_tag    = None
-                #     self.state         = State.SLOWING
-                #     print("[SignBehavior] >>> YIELD — slowing to creep speed")
-
-                # Yield same as stop
-                elif tag == int(TagID.STOP) or tag == int(TagID.YIELD):
-                    label = "STOP" if tag == int(TagID.STOP) else "YIELD"
+                # STOP and YIELD both perform a full stop (yield-as-slow disabled)
+                elif tag in (TagID.STOP, TagID.YIELD):
+                    label = "STOP" if tag == TagID.STOP else "YIELD"
                     self._active_sign_op = f"{label} sign"
                     self._slow_factor  = 0.5
                     self._slow_target  = 0.0
@@ -246,10 +242,8 @@ class SignBehaviorFSM:
 
 
     # ------------------------------------------------------------------
-    # CHECKPATH
+    # CHECKPATH — sweep left then right, settle, then decide right-of-way
     # ------------------------------------------------------------------
-    # during check_settle_frames frames - calculate offset - to see if car is moving or rotating
-    # if both rotating -> stopped at STOP sign. one who has bot on its left goes first.
     def _checkpath_step(self, detections):
         spd = self.cfg.check_turn_speed
         cl  = self.cfg.check_left_frames
