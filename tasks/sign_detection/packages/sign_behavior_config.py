@@ -125,4 +125,4 @@ class SignBehaviorConfig:
         # Accept anything passed by real_server.py.
         # This prevents future keyword-argument crashes.
         for key, value in overrides.items():
-            setattr(self, key, value) 
+            setattr(self, key, value)

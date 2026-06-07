@@ -2,12 +2,11 @@ white_lower_h: 0
 white_lower_s: 0
 white_lower_v: 205
 white_upper_h: 179
-white_upper_s: 42
+white_upper_s: 255
 white_upper_v: 255
-
-yellow_lower_h: 22
-yellow_lower_s: 70
-yellow_lower_v: 70
-yellow_upper_h: 42
-yellow_upper_s: 255
+yellow_lower_h: 0
+yellow_lower_s: 118
+yellow_lower_v: 85
+yellow_upper_h: 112
+yellow_upper_s: 208
 yellow_upper_v: 255
