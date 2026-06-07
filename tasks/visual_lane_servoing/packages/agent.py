@@ -13,7 +13,6 @@ _CONFIG_FILE = os.path.normpath(os.path.join(
 ))
 
 _LINE_OFFSET = 160
-_ROI_START = 0.50
 _SLICE_TOL = 6
 
 # More slices = more stable on curves.
@@ -33,7 +32,6 @@ def _strip_center_x(mask: np.ndarray, y: int, prefer_right: bool = False):
         return None
 
     if prefer_right:
-        # Use right-biased value so random gray/floor blobs do not pull the line left.
         return int(np.percentile(idx, 70))
 
     return int(np.median(idx))
@@ -73,9 +71,9 @@ class LaneServoingAgent:
         except Exception:
             cfg = {}
 
-        self.p_gain = cfg.get("p_gain", 0.14)
-        self.d_gain = cfg.get("d_gain", 0.05)
-        self.max_steer = cfg.get("max_steer", 0.22)
+        self.p_gain = cfg.get("p_gain", 0.12)
+        self.d_gain = cfg.get("d_gain", 0.04)
+        self.max_steer = cfg.get("max_steer", 0.20)
         self.base_speed = cfg.get("base_speed", 0.12)
         self.curve_speed = cfg.get("curve_speed", 0.10)
         self.curve_threshold = cfg.get("curve_threshold", 350)
@@ -92,8 +90,11 @@ class LaneServoingAgent:
 
         self._lane_half_width = float(_LINE_OFFSET)
 
-        self._left_history = deque(maxlen=3)
-        self._right_history = deque(maxlen=3)
+        self._left_history = deque(maxlen=4)
+        self._right_history = deque(maxlen=4)
+
+        self._lost_lane_frames = 0
+        self._max_lost_lane_frames = 5
 
         self.last_debug_info = self._empty_debug_info(480, 640)
 
@@ -102,15 +103,13 @@ class LaneServoingAgent:
             y_mean = float(np.median(yellow_xs))
             w_mean = float(np.median(white_xs))
 
-            # If white is not actually to the right of yellow, ignore the bad pair.
             if w_mean <= y_mean + 50:
                 error = self._prev_error * (w / 2.0)
             else:
                 measured = (w_mean - y_mean) / 2.0
 
-                # Update lane width only with believable values.
                 if 60 < measured < 360:
-                    self._lane_half_width = 0.90 * self._lane_half_width + 0.10 * measured
+                    self._lane_half_width = 0.92 * self._lane_half_width + 0.08 * measured
 
                 lane_center = (y_mean + w_mean) / 2.0
                 error = w / 2.0 - lane_center
@@ -132,7 +131,7 @@ class LaneServoingAgent:
 
     def _calculate_steering(self, error: float) -> float:
         raw_diff = error - self._prev_error
-        error_diff = 0.70 * self._prev_diff + 0.30 * raw_diff
+        error_diff = 0.80 * self._prev_diff + 0.20 * raw_diff
 
         self._prev_diff = error_diff
         self._prev_error = error
@@ -140,8 +139,7 @@ class LaneServoingAgent:
         raw_steering = self.p_gain * error + self.d_gain * error_diff
         raw_steering = float(np.clip(raw_steering, -self.max_steer, self.max_steer))
 
-        # Smooth steering to prevent sudden hard turns when white line flickers.
-        max_delta = 0.035
+        max_delta = 0.022
         delta = np.clip(raw_steering - self._filtered_steering, -max_delta, max_delta)
 
         self._filtered_steering += delta
@@ -151,26 +149,31 @@ class LaneServoingAgent:
 
         return self._filtered_steering
 
-    def _motor_commands(self, steering: float, recovery: bool, is_curve: bool, both_visible: bool):
+    def _motor_commands(
+        self,
+        steering: float,
+        recovery: bool,
+        is_curve: bool,
+        both_visible: bool,
+        one_visible: bool,
+    ):
         if recovery:
             return 0.0, 0.0
 
         speed = self.curve_speed if is_curve else self.base_speed
 
-        if not both_visible:
-            speed *= 0.75
+        if not both_visible and one_visible:
+            speed *= 0.78
 
-        # Slow down when steering is large.
-        speed *= max(0.65, 1.0 - abs(steering) * 1.8)
+        speed *= max(0.72, 1.0 - abs(steering) * 1.3)
 
         left = speed - steering
         right = speed + steering
 
-        # No aggressive curve boost. It caused extreme turns.
-        return float(np.clip(left, 0.0, 0.35)), float(np.clip(right, 0.0, 0.35))
+        return float(np.clip(left, 0.0, 0.30)), float(np.clip(right, 0.0, 0.30))
 
     def _smooth(self, left, right, both_visible):
-        buf = 3 if both_visible else 2
+        buf = 4 if both_visible else 3
 
         if self._left_history.maxlen != buf:
             self._left_history = deque(maxlen=buf)
@@ -187,7 +190,6 @@ class LaneServoingAgent:
     def compute_commands(self, image: np.ndarray) -> Tuple[float, float]:
         self.frame_count += 1
 
-        # Incoming image is RGB. Detection function expects BGR.
         bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
         try:
@@ -203,6 +205,41 @@ class LaneServoingAgent:
         white_pixels = int(np.count_nonzero(mask_w))
         total_pixels = yellow_pixels + white_pixels
 
+        h, w = mask_y.shape
+
+        yellow_xs, white_xs = detect_lines_in_slices(mask_y, mask_w, h)
+
+        left_det = len(yellow_xs) > 0
+        right_det = len(white_xs) > 0
+
+        both_visible = left_det and right_det
+        one_visible = left_det or right_det
+
+        if one_visible:
+            self._lost_lane_frames = 0
+        else:
+            self._lost_lane_frames += 1
+
+        recovery = self._lost_lane_frames > self._max_lost_lane_frames
+
+        is_curve, curve_dir = detect_curve(yellow_xs, white_xs, self.curve_threshold)
+
+        raw_error = self._calculate_error(yellow_xs, white_xs, left_det, right_det, w)
+
+        self._filtered_error = 0.88 * self._filtered_error + 0.12 * raw_error
+
+        steering = self._calculate_steering(self._filtered_error)
+
+        left, right = self._motor_commands(
+            steering,
+            recovery,
+            is_curve,
+            both_visible,
+            one_visible,
+        )
+
+        left, right = self._smooth(left, right, both_visible)
+
         combined = np.clip(mask_left + mask_right, 0, 1)
 
         self.last_debug_info = {
@@ -212,45 +249,22 @@ class LaneServoingAgent:
             "yellow_mask": mask_y,
             "total_lane_pixels": total_pixels,
             "lateral_error": float(np.clip(self._prev_error, -1.0, 1.0)),
-            "lane_detected": total_pixels >= self.detection_threshold,
+            "lane_detected": not recovery,
             "frame_count": self.frame_count,
-        }
-
-        h, w = mask_y.shape
-
-        yellow_xs, white_xs = detect_lines_in_slices(mask_y, mask_w, h)
-
-        left_det = len(yellow_xs) > 0
-        right_det = len(white_xs) > 0
-
-        recovery = total_pixels < self.detection_threshold
-        both_visible = left_det and right_det and not recovery
-
-        is_curve, curve_dir = detect_curve(yellow_xs, white_xs, self.curve_threshold)
-
-        raw_error = self._calculate_error(yellow_xs, white_xs, left_det, right_det, w)
-
-        # Stronger filtering. Prevents jumping when mask flickers.
-        self._filtered_error = 0.82 * self._filtered_error + 0.18 * raw_error
-
-        steering = self._calculate_steering(self._filtered_error)
-
-        left, right = self._motor_commands(steering, recovery, is_curve, both_visible)
-        left, right = self._smooth(left, right, both_visible)
-
-        self.last_debug_info.update({
             "yellow_xs": yellow_xs,
             "white_xs": white_xs,
             "slice_ys": [int(h * r) for r in _SLICE_Y_RATIOS],
             "is_curve": is_curve,
             "curve_dir": curve_dir,
-        })
+            "lost_lane_frames": self._lost_lane_frames,
+        }
 
         if self.frame_count % 20 == 0:
             print(
                 f"[LaneServoingAgent] yellow_xs={yellow_xs}, white_xs={white_xs}, "
-                f"err={self._filtered_error:.3f}, steer={steering:.3f}, "
-                f"left={left:.3f}, right={right:.3f}, lane={not recovery}"
+                f"lost={self._lost_lane_frames}, err={self._filtered_error:.3f}, "
+                f"steer={steering:.3f}, left={left:.3f}, right={right:.3f}, "
+                f"lane={not recovery}"
             )
 
         return left, right
@@ -273,4 +287,10 @@ class LaneServoingAgent:
             "lateral_error": 0.0,
             "lane_detected": False,
             "frame_count": 0,
+            "yellow_xs": [],
+            "white_xs": [],
+            "slice_ys": [],
+            "is_curve": False,
+            "curve_dir": 0,
+            "lost_lane_frames": 0,
         }

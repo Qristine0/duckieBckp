@@ -1,6 +1,5 @@
-from dataclasses import dataclass
 from enum import IntEnum, auto
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
 class TagID(IntEnum):
@@ -11,9 +10,8 @@ class TagID(IntEnum):
     YIELD = 39
 
 
-# Maps raw detected AprilTag IDs to logical sign meanings.
 _TAG_ID_MAP: Dict[int, TagID] = {
-    # Your terminal shows STOP sign is detected as raw tag 1 in simulation.
+    # Your simulation/real sign sometimes reports STOP as raw tag 1.
     1: TagID.STOP,
 
     9: TagID.TURN_RIGHT_FWD,
@@ -29,9 +27,8 @@ _TAG_ID_MAP: Dict[int, TagID] = {
 }
 
 
-def resolve_tag(raw_id: int):
-    """Map raw detected tag ID to logical TagID, or None if unknown."""
-    return _TAG_ID_MAP.get(raw_id)
+def resolve_tag(raw_id):
+    return _TAG_ID_MAP.get(int(raw_id))
 
 
 _TAG_TURNS = {
@@ -54,62 +51,78 @@ class State(IntEnum):
     EXITING = auto()
 
 
-@dataclass
 class SignBehaviorConfig:
-    # Red-line detection
-    red_strip_frac = 0.32
-    red_pixel_frac = 0.025
+    """
+    Config object for sign behavior.
 
-    # Bigger = stop later / closer to red line.
-    # Smaller = stop earlier / farther from red line.
-    red_line_close_y2_ratio = 0.82
+    Important:
+    This class accepts keyword overrides, for example:
 
-    red_hsv_low1 = (0, 120, 80)       # type: Tuple[int, int, int]
-    red_hsv_high1 = (10, 255, 255)    # type: Tuple[int, int, int]
-    red_hsv_low2 = (170, 120, 80)     # type: Tuple[int, int, int]
-    red_hsv_high2 = (180, 255, 255)   # type: Tuple[int, int, int]
+        SignBehaviorConfig(stop_hold_frames=10, min_margin=10.0)
 
-    # After sign is detected, keep driving but slower while approaching red line.
-    approach_speed_factor = 0.72
-    approach_ramp_factor = 0.98
+    This fixes the real-bot crash:
+        TypeError: __init__() got an unexpected keyword argument 'stop_hold_frames'
+    """
 
-    # Stop-line hold
-    stop_hold_frames = 0
+    def __init__(self, **overrides):
+        # Red-line detection
+        self.red_strip_frac = 0.32
+        self.red_pixel_frac = 0.025
+        self.red_line_close_y2_ratio = 0.82
 
-    # Braking after close red line is detected
-    slow_ramp_factor = 0.84
-    stopped_speed_threshold = 0.06
+        self.red_hsv_low1 = (0, 120, 80)
+        self.red_hsv_high1 = (10, 255, 255)
+        self.red_hsv_low2 = (170, 120, 80)
+        self.red_hsv_high2 = (180, 255, 255)
 
-    # YIELD specific
-    yield_min_speed = 0.1
-    yield_creep_frames = 5
+        # Sign approach behavior
+        self.approach_speed_factor = 0.72
+        self.approach_ramp_factor = 0.98
 
-    # CHECKPATH sweep
-    check_left_frames = 4
-    check_right_frames = 4
-    check_turn_speed = 0.04
-    check_settle_frames = 5
+        # Stop-line hold
+        self.stop_hold_frames = 0
 
-    # POST_STOP
-    post_stop_frames = 25
-    post_stop_speed = 0.2
+        # Some real_server versions pass this.
+        # Keep it here so the robot does not crash.
+        self.min_margin = 10.0
 
-    # Pre-turn forward creep
-    preturn_right_frames = 11
-    preturn_left_frames = 20
-    preturn_speed = 0.20
+        # Speed ramp
+        self.slow_ramp_factor = 0.84
+        self.stopped_speed_threshold = 0.06
 
-    # Intersection manoeuvres
-    intersect_forward_frames = 28
-    intersect_left_frames = 18
-    intersect_right_frames = 18
-    intersect_forward_speed = (0.20, 0.20)  # type: Tuple[float, float]
+        # YIELD specific
+        self.yield_min_speed = 0.10
+        self.yield_creep_frames = 5
 
-    # No turning in place
-    intersect_left_speed = (0.15, 0.22)     # type: Tuple[float, float]
-    intersect_right_speed = (0.22, 0.15)    # type: Tuple[float, float]
+        # CHECKPATH sweep
+        self.check_left_frames = 4
+        self.check_right_frames = 4
+        self.check_turn_speed = 0.04
+        self.check_settle_frames = 5
 
-    # Exiting
-    exit_speed = 0.20
-    exit_timeout_frames = 5
+        # POST_STOP
+        self.post_stop_frames = 25
+        self.post_stop_speed = 0.20
 
+        # Pre-turn forward creep
+        self.preturn_right_frames = 11
+        self.preturn_left_frames = 20
+        self.preturn_speed = 0.20
+
+        # Intersection manoeuvres
+        self.intersect_forward_frames = 28
+        self.intersect_left_frames = 18
+        self.intersect_right_frames = 18
+
+        self.intersect_forward_speed = (0.20, 0.20)
+        self.intersect_left_speed = (0.15, 0.22)
+        self.intersect_right_speed = (0.22, 0.15)
+
+        # Exiting
+        self.exit_speed = 0.20
+        self.exit_timeout_frames = 5
+
+        # Accept anything passed by real_server.py.
+        # This prevents future keyword-argument crashes.
+        for key, value in overrides.items():
+            setattr(self, key, value) 

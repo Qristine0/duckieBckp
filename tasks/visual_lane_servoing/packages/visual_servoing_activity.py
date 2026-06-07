@@ -25,7 +25,7 @@ except FileNotFoundError:
 
 
 _yellow_lower = np.array([
-    _h.get("yellow_lower_h", 18),
+    _h.get("yellow_lower_h", 22),
     _h.get("yellow_lower_s", 70),
     _h.get("yellow_lower_v", 70),
 ], dtype=np.uint8)
@@ -51,11 +51,10 @@ _white_upper = np.array([
 
 _ROI_START = 0.42
 
-# Hide left white line. Use 0.42 because on curves the right white line can move toward center.
+# Hide left white line. Keep this moderate because on curves the right white line can move toward center.
 _IGNORE_WHITE_LEFT_UNTIL = 0.42
 
 # White filtering.
-# Gray floor should fail because it is not bright enough / not neutral enough.
 _WHITE_MIN_BGR = 145
 _WHITE_MAX_CHANNEL_DIFF = 70
 
@@ -68,6 +67,82 @@ def _clean_mask(mask: np.ndarray, open_size: int = 3, close_size: int = 5) -> np
     clean = cv2.morphologyEx(clean, cv2.MORPH_CLOSE, k_close)
 
     return clean
+
+
+def _detect_red_stopline_mask(image_bgr: np.ndarray, imghsv: np.ndarray, roi_mask: np.ndarray) -> np.ndarray:
+    """
+    Remove only red stop-line components.
+    Important: do NOT remove broad orange/yellow ranges, because that deletes the real yellow dashed lane.
+    """
+    h, w = roi_mask.shape[:2]
+
+    # True red ranges.
+    red_1 = cv2.inRange(
+        imghsv,
+        np.array([0, 90, 70], dtype=np.uint8),
+        np.array([14, 255, 255], dtype=np.uint8),
+    )
+    red_2 = cv2.inRange(
+        imghsv,
+        np.array([168, 90, 70], dtype=np.uint8),
+        np.array([179, 255, 255], dtype=np.uint8),
+    )
+
+    # Some red stop lines look orange in the camera.
+    # But yellow lane also lives near orange, so require RED channel dominance.
+    orange_candidate = cv2.inRange(
+        imghsv,
+        np.array([10, 100, 80], dtype=np.uint8),
+        np.array([20, 255, 255], dtype=np.uint8),
+    )
+
+    b = image_bgr[:, :, 0].astype(np.int16)
+    g = image_bgr[:, :, 1].astype(np.int16)
+    r = image_bgr[:, :, 2].astype(np.int16)
+
+    red_dominant = ((r > g + 18) & (r > b + 30)).astype(np.uint8) * 255
+    orange_red = cv2.bitwise_and(orange_candidate, red_dominant)
+
+    red_mask = red_1 | red_2 | orange_red
+    red_mask = cv2.bitwise_and(red_mask, roi_mask)
+
+    red_mask = _clean_mask(red_mask, open_size=3, close_size=7)
+
+    output = np.zeros_like(red_mask)
+
+    contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+
+        if area < 60:
+            continue
+
+        x, y, bw, bh = cv2.boundingRect(cnt)
+
+        if bw <= 2 or bh <= 2:
+            continue
+
+        y2 = y + bh
+        aspect = bw / float(bh + 1e-6)
+
+        # Stop line is usually horizontal and wide.
+        if aspect < 1.6:
+            continue
+
+        if bw < w * 0.08:
+            continue
+
+        if y2 < h * 0.35:
+            continue
+
+        cv2.drawContours(output, [cnt], -1, 255, thickness=cv2.FILLED)
+
+    # Dilate only the accepted red stop-line parts.
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 5))
+    output = cv2.dilate(output, kernel, iterations=1)
+
+    return output
 
 
 def _filter_white_components(mask: np.ndarray, h: int, w: int) -> np.ndarray:
@@ -106,7 +181,6 @@ def _filter_white_components(mask: np.ndarray, h: int, w: int) -> np.ndarray:
             continue
 
         # Ignore left white line.
-        # Component must be mostly on the right/front side.
         if cx < w * _IGNORE_WHITE_LEFT_UNTIL and x2 < w * 0.58:
             continue
 
@@ -148,7 +222,11 @@ def _filter_yellow_components(mask: np.ndarray, h: int, w: int) -> np.ndarray:
         if y2 < h * 0.35:
             continue
 
-        # Reject very large yellow blobs that are probably not lane dashes.
+        # Reject very large yellow/orange horizontal blobs.
+        # This catches stop-line leftovers but keeps normal yellow dashes.
+        if bw > w * 0.28 and bh < h * 0.12:
+            continue
+
         if bw > w * 0.35 and bh > h * 0.20:
             continue
 
@@ -160,6 +238,7 @@ def _filter_yellow_components(mask: np.ndarray, h: int, w: int) -> np.ndarray:
 def detect_lane_markings(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     image is BGR. agent.py converts camera RGB -> BGR before calling this.
+
     Returns:
         yellow_mask, white_mask
     """
@@ -176,11 +255,18 @@ def detect_lane_markings(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     raw_yellow = cv2.bitwise_and(raw_yellow, roi_mask)
     raw_white = cv2.bitwise_and(raw_white, roi_mask)
 
-    # Remove left-side white line before morphology.
+    # Remove only confirmed red stop-line parts.
+    red_stopline_mask = _detect_red_stopline_mask(image, imghsv, roi_mask)
+    not_red_stopline = cv2.bitwise_not(red_stopline_mask)
+
+    raw_yellow = cv2.bitwise_and(raw_yellow, not_red_stopline)
+    raw_white = cv2.bitwise_and(raw_white, not_red_stopline)
+
+    # Remove left-side white line.
     raw_white[:, :int(w * _IGNORE_WHITE_LEFT_UNTIL)] = 0
 
     # Extra white check:
-    # True white tape is bright and has similar B/G/R values.
+    # Real white tape is bright and neutral. Gray/pink floor should fail.
     min_channel = np.min(image, axis=2)
     max_channel = np.max(image, axis=2)
     channel_diff = max_channel - min_channel
