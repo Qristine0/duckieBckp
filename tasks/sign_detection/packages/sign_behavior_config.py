@@ -31,9 +31,11 @@ def resolve_tag(raw_id: int) -> Optional[TagID]:
 
 
 _TAG_TURNS: Dict[TagID, List[str]] = {
-    TagID.TURN_LEFT_RIGHT: ["left", "right"],
+    # TagID.TURN_LEFT_RIGHT: ["left", "right"],
+    TagID.TURN_LEFT_RIGHT: ["right"],
     TagID.TURN_LEFT_FWD: ["left", "forward"],
-    TagID.TURN_RIGHT_FWD: ["right", "forward"],
+    TagID.TURN_RIGHT_FWD: ["right"],
+    # TagID.TURN_RIGHT_FWD: ["right", "forward"],
 }
 
 
@@ -90,46 +92,46 @@ class SignBehaviorConfig:
         self.approach_ramp_factor: float = kwargs.pop("approach_ramp_factor", 0.985)
 
         # Full stop behavior
-        self.stop_hold_frames: int = kwargs.pop("stop_hold_frames", 12)
+        self.stop_hold_frames: int = kwargs.pop("stop_hold_frames", 5)
         self.slow_ramp_factor: float = kwargs.pop("slow_ramp_factor", 0.82)
         self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.055)
 
         # CHECKPATH sweep
-        self.check_left_frames: int = kwargs.pop("check_left_frames", 4)
-        self.check_right_frames: int = kwargs.pop("check_right_frames", 4)
-        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.035)
-        self.check_settle_frames: int = kwargs.pop("check_settle_frames", 4)
+        self.check_left_frames: int = kwargs.pop("check_left_frames", 8)
+        self.check_right_frames: int = kwargs.pop("check_right_frames", 8)
+        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.05)
+        self.check_settle_frames: int = kwargs.pop("check_settle_frames", 8)
 
         # POST_STOP
         self.post_stop_frames: int = kwargs.pop("post_stop_frames", 18)
         self.post_stop_speed: float = kwargs.pop("post_stop_speed", 0.13)
 
         # Pre-turn forward creep
-        self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 10)
-        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 16)
-        self.preturn_speed: float = kwargs.pop("preturn_speed", 0.13)
+        self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 5)
+        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 5)
+        self.preturn_speed: float = kwargs.pop("preturn_speed", 0.30)
 
         # Intersection manoeuvres
-        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 24)
-        self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 18)
-        self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 18)
+        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 10)
+        self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 20)
+        self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 12)
 
         self.intersect_forward_speed: Tuple[float, float] = kwargs.pop(
             "intersect_forward_speed",
-            (0.13, 0.13),
+            (0.4, 0.4),
         )
         self.intersect_left_speed: Tuple[float, float] = kwargs.pop(
             "intersect_left_speed",
-            (0.09, 0.17),
+            (0.19, 0.37),
         )
         self.intersect_right_speed: Tuple[float, float] = kwargs.pop(
             "intersect_right_speed",
-            (0.17, 0.09),
+            (0.57, 0.19),
         )
 
         # Exiting after intersection
-        self.exit_speed: float = kwargs.pop("exit_speed", 0.13)
-        self.exit_timeout_frames: int = kwargs.pop("exit_timeout_frames", 8)
+        self.exit_speed: float = kwargs.pop("exit_speed", 0.40)
+        self.exit_timeout_frames: int = kwargs.pop("exit_timeout_frames", 5)
 
         for key, value in kwargs.items():
             setattr(self, key, value)

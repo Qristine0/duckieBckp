@@ -234,6 +234,7 @@ class SignBehaviorFSM:
                 self._slow_factor = max(target_factor, self._slow_factor * ramp_factor)
 
                 return base_left * self._slow_factor, base_right * self._slow_factor
+                # return base_left, base_right
 
             self._slow_factor = 1.0
             return base_left, base_right
@@ -260,7 +261,7 @@ class SignBehaviorFSM:
         if self.state == State.STOPPED:
             self._hold_counter += 1
 
-            if self._hold_counter < self.cfg.stop_hold_frames:
+            if self._hold_counter < self.cfg.slow_ramp_factor:
                 return 0.0, 0.0
 
             self._check_counter = 0
