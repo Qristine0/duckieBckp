@@ -285,8 +285,6 @@ class SignBehaviorFSM:
         elif self.state == State.STOPPED:
             self._hold_counter += 1
 
-            if self._hold_counter < self.cfg.stop_hold_frames:
-                return 0.0, 0.0
 
             self._check_counter = 0
             self._vehicle_seen_left = False

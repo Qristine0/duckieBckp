@@ -325,45 +325,45 @@ def should_stop(
     detections: List[Detection],
 ) -> Tuple[bool, str]:
     global _duck_counter, _truck_counter, _stop_latch
-
-    if detections is None:
-        detections = []
-
-    duck_threat = False
-    truck_threat = False
-    reason = ""
-
-    for bbox, score, cls_id in detections:
-        if cls_id == 0:
-            if _duck_close_enough(bbox, score):
-                duck_threat = True
-                reason = f"duckie close enough score={score:.2f} bbox={bbox}"
-
-        elif cls_id == 1:
-            if _truck_close_enough(bbox, score):
-                truck_threat = True
-                reason = f"truck close enough score={score:.2f} bbox={bbox}"
-
-    if duck_threat:
-        _duck_counter += 1
-    else:
-        _duck_counter = max(0, _duck_counter - 1)
-
-    if truck_threat:
-        _truck_counter += 1
-    else:
-        _truck_counter = max(0, _truck_counter - 1)
-
-    confirmed_duck = _duck_counter >= DUCK_CONFIRM_FRAMES
-    confirmed_truck = _truck_counter >= TRUCK_CONFIRM_FRAMES
-
-    if confirmed_duck or confirmed_truck:
-        _stop_latch = STOP_LATCH_FRAMES
-    else:
-        _stop_latch = max(0, _stop_latch - 1)
-
-    if _stop_latch > 0:
-        return True, reason or "stop latch active"
+    #
+    # if detections is None:
+    #     detections = []
+    #
+    # duck_threat = False
+    # truck_threat = False
+    # reason = ""
+    #
+    # for bbox, score, cls_id in detections:
+    #     if cls_id == 0:
+    #         if _duck_close_enough(bbox, score):
+    #             duck_threat = True
+    #             reason = f"duckie close enough score={score:.2f} bbox={bbox}"
+    #
+    #     elif cls_id == 1:
+    #         if _truck_close_enough(bbox, score):
+    #             truck_threat = True
+    #             reason = f"truck close enough score={score:.2f} bbox={bbox}"
+    #
+    # if duck_threat:
+    #     _duck_counter += 1
+    # else:
+    #     _duck_counter = max(0, _duck_counter - 1)
+    #
+    # if truck_threat:
+    #     _truck_counter += 1
+    # else:
+    #     _truck_counter = max(0, _truck_counter - 1)
+    #
+    # confirmed_duck = _duck_counter >= DUCK_CONFIRM_FRAMES
+    # confirmed_truck = _truck_counter >= TRUCK_CONFIRM_FRAMES
+    #
+    # if confirmed_duck or confirmed_truck:
+    #     _stop_latch = STOP_LATCH_FRAMES
+    # else:
+    #     _stop_latch = max(0, _stop_latch - 1)
+    #
+    # if _stop_latch > 0:
+    #     return True, reason or "stop latch active"
 
     return False, ""
 

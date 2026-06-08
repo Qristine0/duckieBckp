@@ -30,7 +30,6 @@ class LaneServoingAgentWithSigns(LaneServoingAgent):
     """
 
     def __init__(self, config_path=None, sign_config=None):
-        # type: (Optional[str], Optional[SignBehaviorConfig]) -> None
         super().__init__(config_path=config_path)
 
         cfg = sign_config or SignBehaviorConfig()

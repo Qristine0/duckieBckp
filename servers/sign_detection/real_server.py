@@ -1,0 +1,249 @@
+import sys
+import os
+import signal
+import threading
+import time
+import socket
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(script_dir, '..', '..')
+sys.path.insert(0, project_root)
+
+import cv2
+from flask import Flask, Response, render_template_string, jsonify, request
+
+from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWithSigns as LaneServoingAgent
+from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
+
+from tasks.sign_detection.packages.detection import detect_obstacles, CLASS_NAMES
+from tasks.sign_detection.packages.detection import should_stop as student_should_stop
+
+from servers.templates.sign_detection import SIGN_DETECTION_TEMPLATE as HTML_TEMPLATE
+
+from duckiebot.camera_driver import CameraDriver
+from duckiebot.wheel_driver import DaguWheelsDriver
+from duckiebot.wheel_driver.wheels_driver_abs import WheelPWMConfiguration
+from launcher.ports import find_available_port
+from servers.common import make_frame_generator, shutdown_cleanup, suppress_http_logs
+
+app = Flask(__name__)
+lane_agent = None
+camera = None
+wheels = None
+running = False
+manual_mode = False
+stop_event = threading.Event()
+
+_last_detections = []
+_detection_lock = threading.Lock()
+_stopped_by_det = False
+_stop_reason = ''
+
+keys_pressed = {'up': False, 'down': False, 'left': False, 'right': False}
+_keys_lock = threading.Lock()
+_keys_last_update = time.time()
+
+
+def manual_control_loop():
+    global _keys_last_update
+    while not stop_event.is_set():
+        if not manual_mode or not wheels:
+            time.sleep(0.05)
+            continue
+
+        if time.time() - _keys_last_update > 0.5:
+            with _keys_lock:
+                for k in keys_pressed:
+                    keys_pressed[k] = False
+
+        with _keys_lock:
+            kc = keys_pressed.copy()
+
+        left = right = 0.0
+        if kc['up']:
+            left, right = 0.5, 0.5
+        if kc['down']:
+            left, right = -0.5, -0.5
+        if kc['up'] and kc['left']:
+            left, right = 0.2, 0.5
+        elif kc['up'] and kc['right']:
+            left, right = 0.5, 0.2
+        elif kc['left']:
+            left, right = -0.3, 0.3
+        elif kc['right']:
+            left, right = 0.3, -0.3
+
+        wheels.set_wheels_speed(left, right)
+        time.sleep(0.05)
+
+
+def _should_stop(detections):
+    return student_should_stop(detections)
+
+
+def visualize(frame_bgr):
+    global _stopped_by_det, _stop_reason, _last_detections
+
+    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
+    # Run detection inline on every frame
+    result = detect_obstacles(frame_rgb)
+    if result is not None:
+        with _detection_lock:
+            _last_detections = result
+
+    with _detection_lock:
+        detections = list(_last_detections)
+
+    if manual_mode:
+        _stopped_by_det = False
+        _stop_reason = ''
+    elif lane_agent is not None:
+        # todo pass shoudl_stop boolean instead of zeroing it on your own
+
+        pwm_left, pwm_right = lane_agent.compute_commands(frame_rgb)
+
+        should_stop_flag, reason = _should_stop(detections)
+        _stopped_by_det = should_stop_flag
+        _stop_reason = reason
+
+        if running and not should_stop_flag:
+            wheels.set_wheels_speed(pwm_left, pwm_right)
+        else:
+            wheels.set_wheels_speed(0.0, 0.0)
+
+    return frame_bgr
+
+
+generate_frames = make_frame_generator(lambda: camera, visualize, quality=50, rgb=False)
+
+
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE, hostname=socket.gethostname(), virtual=False)
+
+
+@app.route('/video')
+def video():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@app.route('/start', methods=['POST'])
+def start():
+    global running
+    running = True
+    return jsonify({'status': 'running'})
+
+
+@app.route('/stop', methods=['POST'])
+def stop():
+    global running
+    running = False
+    if wheels:
+        wheels.set_wheels_speed(0.0, 0.0)
+    return jsonify({'status': 'stopped'})
+
+
+@app.route('/set_mode', methods=['POST'])
+def set_mode():
+    global manual_mode
+    mode = request.json.get('mode', 'auto') if request.json else 'auto'
+    manual_mode = (mode == 'manual')
+    if wheels and not manual_mode:
+        wheels.set_wheels_speed(0.0, 0.0)
+    return jsonify({'mode': 'manual' if manual_mode else 'auto'})
+
+
+@app.route('/keys', methods=['POST'])
+def update_keys():
+    global _keys_last_update
+    data = request.json or {}
+    with _keys_lock:
+        for k in keys_pressed:
+            keys_pressed[k] = bool(data.get(k, False))
+    _keys_last_update = time.time()
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/set_threshold', methods=['POST'])
+def set_threshold():
+    return jsonify({'conf_threshold': 0.5})
+
+
+@app.route('/status')
+def status():
+    with _detection_lock:
+        dets = list(_last_detections)
+    return jsonify({
+        'running': running,
+        'manual_mode': manual_mode,
+        'model_loaded': True,
+        'load_error': 0,
+        'trt_building': False,
+        'stopped_by_detection': _stopped_by_det,
+        'stop_reason': _stop_reason,
+        'conf_threshold': 0.5,
+        'detections': [
+            {'class': CLASS_NAMES.get(c, str(c)), 'score': round(s, 3), 'bbox': list(b)}
+            for b, s, c in dets
+        ],
+    })
+
+
+def main():
+    global lane_agent, camera, wheels
+
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--port', type=int, default=5000)
+    args = ap.parse_args()
+
+    suppress_http_logs()
+    print('=' * 60)
+    print('OBJECT DETECTION — LANE FOLLOW + STOP ON DETECTION')
+    print('=' * 60)
+
+    def _init_wheels():
+        global wheels
+        wheels = DaguWheelsDriver(WheelPWMConfiguration(), WheelPWMConfiguration())
+        print('[Init] Wheels ready')
+
+    def _init_camera():
+        global camera
+        cam = CameraDriver()
+        cam.start()
+        camera = cam
+        print('[Init] Camera ready')
+
+    def _init_agents():
+        global lane_agent
+        sign_config = SignBehaviorConfig()
+        lane_agent = LaneServoingAgent(sign_config)
+        print(f'[Init] Lane agent ready (speed={lane_agent.base_speed})')
+
+    threading.Thread(target=_init_wheels, daemon=True).start()
+    threading.Thread(target=_init_camera, daemon=True).start()
+    threading.Thread(target=_init_agents, daemon=True).start()
+    threading.Thread(target=manual_control_loop, daemon=True).start()
+
+    def _shutdown(signum, frame):
+        shutdown_cleanup(wheels, camera, stop_event)
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+
+    web_port = find_available_port(args.port)
+    print(f'\nWeb Interface: http://{socket.gethostname()}.local:{web_port}')
+    print('=' * 60 + '\n')
+
+    try:
+        app.run(host='0.0.0.0', port=web_port, debug=False, threaded=True)
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        shutdown_cleanup(wheels, camera, stop_event)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -343,10 +343,10 @@ def package_task(task_name):
     with tarfile.open(fileobj=buf, mode='w:gz') as tar:
         print(f"   Adding packages: tasks/{task_name}/packages/")
         tar.add(task_packages_dir, arcname=f'tasks/{task_name}/packages', filter=no_pycache)
-        servers_dir = os.path.join(PROJECT_ROOT, 'servers')
+        servers_dir = os.path.join(PROJECT_ROOT, 'servers', task_name)
         if os.path.exists(servers_dir):
             print(f"   Adding servers: servers/")
-            tar.add(servers_dir, arcname='servers', filter=no_pycache)
+            tar.add(servers_dir, arcname=f'servers/{task_name}', filter=no_pycache)
         if os.path.exists(config_dir):
             print(f"   Adding configs: config/")
             tar.add(config_dir, arcname='config', filter=no_pycache)
