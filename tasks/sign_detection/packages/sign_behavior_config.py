@@ -11,7 +11,6 @@ class TagID(IntEnum):
 
 
 _TAG_ID_MAP: Dict[int, TagID] = {
-    # In your simulation/logs, some STOP signs are detected as raw tag 1.
     1: TagID.STOP,
 
     9: TagID.TURN_RIGHT_FWD,
@@ -41,7 +40,6 @@ _TAG_TURNS: Dict[TagID, List[str]] = {
 class State(IntEnum):
     MOVING = auto()
     SLOWING = auto()
-    YIELD_CREEP = auto()
     STOPPED = auto()
     CHECKPATH = auto()
     POST_STOP = auto()
@@ -55,79 +53,83 @@ class SignBehaviorConfig:
     """
     Config for sign behavior.
 
-    Important:
-    This class intentionally accepts **kwargs so old server code like
-
-        SignBehaviorConfig(stop_hold_frames=0, min_margin=10.0)
-
-    will not crash.
+    Accepts **kwargs so old code does not crash if it passes old values.
     """
 
     def __init__(self, **kwargs):
         # Red-line detection
-        self.red_strip_frac: float = kwargs.pop("red_strip_frac", 0.32)
-        self.red_pixel_frac: float = kwargs.pop("red_pixel_frac", 0.025)
+        self.red_strip_frac: float = kwargs.pop("red_strip_frac", 0.34)
+
+        self.red_roi_left: float = kwargs.pop("red_roi_left", 0.24)
+        self.red_roi_right: float = kwargs.pop("red_roi_right", 0.76)
 
         # Bigger = stop later / closer to red line.
-        # Smaller = stop earlier / farther from red line.
-        self.red_line_close_y2_ratio: float = kwargs.pop("red_line_close_y2_ratio", 0.82)
+        self.red_line_close_y2_ratio: float = kwargs.pop("red_line_close_y2_ratio", 0.80)
 
-        self.red_hsv_low1: Tuple[int, int, int] = kwargs.pop("red_hsv_low1", (0, 120, 80))
-        self.red_hsv_high1: Tuple[int, int, int] = kwargs.pop("red_hsv_high1", (10, 255, 255))
-        self.red_hsv_low2: Tuple[int, int, int] = kwargs.pop("red_hsv_low2", (170, 120, 80))
-        self.red_hsv_high2: Tuple[int, int, int] = kwargs.pop("red_hsv_high2", (180, 255, 255))
+        self.red_pixel_frac: float = kwargs.pop("red_pixel_frac", 0.018)
+        self.red_min_area: float = kwargs.pop("red_min_area", 70.0)
+        self.red_min_width_frac: float = kwargs.pop("red_min_width_frac", 0.12)
 
-        # After sign is detected, keep driving but slower while approaching red line.
-        self.approach_speed_factor: float = kwargs.pop("approach_speed_factor", 0.72)
-        self.approach_ramp_factor: float = kwargs.pop("approach_ramp_factor", 0.98)
+        self.red_hsv_low1: Tuple[int, int, int] = kwargs.pop("red_hsv_low1", (0, 100, 70))
+        self.red_hsv_high1: Tuple[int, int, int] = kwargs.pop("red_hsv_high1", (12, 255, 255))
+        self.red_hsv_low2: Tuple[int, int, int] = kwargs.pop("red_hsv_low2", (168, 100, 70))
+        self.red_hsv_high2: Tuple[int, int, int] = kwargs.pop("red_hsv_high2", (179, 255, 255))
 
-        # Stop-line hold
-        self.stop_hold_frames: int = kwargs.pop("stop_hold_frames", 0)
+        # Important:
+        # Do NOT start default intersection behavior when red line is seen without a saved sign.
+        self.default_forward_on_red_without_tag: bool = kwargs.pop(
+            "default_forward_on_red_without_tag",
+            False,
+        )
 
-        # Braking after close red line is detected
-        self.slow_ramp_factor: float = kwargs.pop("slow_ramp_factor", 0.84)
-        self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.06)
+        # After finishing sign behavior, ignore the same red line for a while.
+        self.red_ignore_after_frames: int = kwargs.pop("red_ignore_after_frames", 25)
 
-        # YIELD specific
-        self.yield_min_speed: float = kwargs.pop("yield_min_speed", 0.10)
-        self.yield_creep_frames: int = kwargs.pop("yield_creep_frames", 5)
+        # Slow approach after seeing a sign but before red line.
+        self.approach_speed_factor: float = kwargs.pop("approach_speed_factor", 0.75)
+        self.approach_ramp_factor: float = kwargs.pop("approach_ramp_factor", 0.985)
+
+        # Full stop behavior
+        self.stop_hold_frames: int = kwargs.pop("stop_hold_frames", 12)
+        self.slow_ramp_factor: float = kwargs.pop("slow_ramp_factor", 0.82)
+        self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.055)
 
         # CHECKPATH sweep
         self.check_left_frames: int = kwargs.pop("check_left_frames", 4)
         self.check_right_frames: int = kwargs.pop("check_right_frames", 4)
-        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.04)
-        self.check_settle_frames: int = kwargs.pop("check_settle_frames", 5)
+        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.035)
+        self.check_settle_frames: int = kwargs.pop("check_settle_frames", 4)
 
         # POST_STOP
-        self.post_stop_frames: int = kwargs.pop("post_stop_frames", 25)
-        self.post_stop_speed: float = kwargs.pop("post_stop_speed", 0.20)
+        self.post_stop_frames: int = kwargs.pop("post_stop_frames", 18)
+        self.post_stop_speed: float = kwargs.pop("post_stop_speed", 0.13)
 
         # Pre-turn forward creep
-        self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 11)
-        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 20)
-        self.preturn_speed: float = kwargs.pop("preturn_speed", 0.20)
+        self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 10)
+        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 16)
+        self.preturn_speed: float = kwargs.pop("preturn_speed", 0.13)
 
         # Intersection manoeuvres
-        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 28)
+        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 24)
         self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 18)
         self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 18)
 
         self.intersect_forward_speed: Tuple[float, float] = kwargs.pop(
-            "intersect_forward_speed", (0.20, 0.20)
+            "intersect_forward_speed",
+            (0.13, 0.13),
         )
         self.intersect_left_speed: Tuple[float, float] = kwargs.pop(
-            "intersect_left_speed", (0.15, 0.22)
+            "intersect_left_speed",
+            (0.09, 0.17),
         )
         self.intersect_right_speed: Tuple[float, float] = kwargs.pop(
-            "intersect_right_speed", (0.22, 0.15)
+            "intersect_right_speed",
+            (0.17, 0.09),
         )
 
-        # Exiting
-        self.exit_speed: float = kwargs.pop("exit_speed", 0.20)
-        self.exit_timeout_frames: int = kwargs.pop("exit_timeout_frames", 5)
+        # Exiting after intersection
+        self.exit_speed: float = kwargs.pop("exit_speed", 0.13)
+        self.exit_timeout_frames: int = kwargs.pop("exit_timeout_frames", 8)
 
-        # Compatibility:
-        # If old real_server.py passes extra values like min_margin,
-        # keep them instead of crashing.
         for key, value in kwargs.items():
             setattr(self, key, value)

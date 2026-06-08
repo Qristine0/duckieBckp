@@ -5,7 +5,7 @@ import threading
 import time
 import socket
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = os.path.dirname(os.path.abspath(_file_))
 project_root = os.path.normpath(os.path.join(script_dir, "..", "..", ".."))
 
 if project_root not in sys.path:
@@ -17,7 +17,7 @@ if script_dir not in sys.path:
 import cv2
 from flask import Flask, Response, render_template_string, jsonify, request
 
-from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent
+from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWithSigns
 
 from tasks.sign_detection.packages.detection import (
     detect_obstacles,
@@ -34,7 +34,8 @@ from duckiebot.wheel_driver.wheels_driver_abs import WheelPWMConfiguration
 from launcher.ports import find_available_port
 from servers.common import make_frame_generator, shutdown_cleanup, suppress_http_logs
 
-app = Flask(__name__)
+
+app = Flask(_name_)
 
 lane_agent = None
 camera = None
@@ -65,7 +66,7 @@ def manual_control_loop():
     global _keys_last_update
 
     while not stop_event.is_set():
-        if not manual_mode or not wheels:
+        if not manual_mode or wheels is None:
             time.sleep(0.05)
             continue
 
@@ -100,6 +101,8 @@ def manual_control_loop():
 
 
 def _should_stop(detections):
+    # Your detection.py currently returns False.
+    # Keep this wrapper so duck/truck stop can be re-enabled later.
     return student_should_stop(detections)
 
 
@@ -140,7 +143,7 @@ def visualize(frame_bgr):
 
     should_stop_flag, reason = _should_stop(detections)
 
-    _stopped_by_det = should_stop_flag
+    _stopped_by_det = bool(should_stop_flag)
     _stop_reason = reason
 
     _draw_detections(frame_bgr, detections)
@@ -148,13 +151,25 @@ def visualize(frame_bgr):
     if manual_mode:
         return frame_bgr
 
-    if lane_agent is not None:
-        left, right = lane_agent.compute_commands(frame_rgb)
+    if wheels is None:
+        return frame_bgr
 
-        if running and not should_stop_flag:
-            wheels.set_wheels_speed(left, right)
-        else:
-            wheels.set_wheels_speed(0.0, 0.0)
+    if not running:
+        wheels.set_wheels_speed(0.0, 0.0)
+        return frame_bgr
+
+    if lane_agent is None:
+        wheels.set_wheels_speed(0.0, 0.0)
+        return frame_bgr
+
+    if should_stop_flag:
+        wheels.set_wheels_speed(0.0, 0.0)
+        return frame_bgr
+
+    # Important:
+    # Pass detections into LaneServoingAgentWithSigns.
+    left, right = lane_agent.compute_commands(frame_rgb, detections)
+    wheels.set_wheels_speed(left, right)
 
     return frame_bgr
 
@@ -170,6 +185,7 @@ def index():
 @app.route("/video")
 def video():
     return Response(generate_frames(), mimetype="multipart/x-mixed-replace; boundary=frame")
+
 
 def reset_runtime_state():
     global _last_detections, _stopped_by_det, _stop_reason
@@ -189,6 +205,7 @@ def reset_runtime_state():
         wheels.set_wheels_speed(0.0, 0.0)
 
     print("[Server] runtime state reset")
+
 
 @app.route("/start", methods=["POST"])
 def start():
@@ -219,7 +236,7 @@ def set_mode():
     mode = request.json.get("mode", "auto") if request.json else "auto"
     manual_mode = mode == "manual"
 
-    if wheels and not manual_mode:
+    if wheels is not None and not manual_mode:
         wheels.set_wheels_speed(0.0, 0.0)
 
     return jsonify({"mode": "manual" if manual_mode else "auto"})
@@ -250,6 +267,13 @@ def status():
     with _detection_lock:
         detections = list(_last_detections)
 
+    sign_state = None
+    sign_debug = {}
+
+    if lane_agent is not None:
+        sign_state = getattr(lane_agent, "sign_state", None)
+        sign_debug = getattr(lane_agent, "sign_debug", {}) or {}
+
     return jsonify({
         "running": running,
         "manual_mode": manual_mode,
@@ -259,6 +283,8 @@ def status():
         "stopped_by_detection": _stopped_by_det,
         "stop_reason": _stop_reason,
         "conf_threshold": 0.5,
+        "sign_state": sign_state,
+        "sign_debug": sign_debug,
         "detections": [
             {
                 "class": CLASS_NAMES.get(cls_id, str(cls_id)),
@@ -282,7 +308,7 @@ def main():
     suppress_http_logs()
 
     print("=" * 60)
-    print("SIGN DETECTION — LANE FOLLOW + COLOR OBSTACLE STOP")
+    print("SIGN DETECTION — LANE FOLLOW + SIGNS + RED LINE")
     print("=" * 60)
 
     def _init_wheels():
@@ -302,8 +328,8 @@ def main():
     def _init_agent():
         global lane_agent
 
-        lane_agent = LaneServoingAgent()
-        print(f"[Init] Lane agent ready (speed={lane_agent.base_speed})")
+        lane_agent = LaneServoingAgentWithSigns()
+        print(f"[Init] Lane agent with signs ready (speed={lane_agent.base_speed})")
 
     threading.Thread(target=_init_wheels, daemon=True).start()
     threading.Thread(target=_init_camera, daemon=True).start()
@@ -330,5 +356,5 @@ def main():
         shutdown_cleanup(wheels, camera, stop_event)
 
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     sys.exit(main())

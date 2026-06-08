@@ -18,43 +18,40 @@ from tasks.sign_detection.packages.sign_behavior_config import (
 class SignBehaviorFSM:
 
     def __init__(self, config=None):
-
         self.cfg = config or SignBehaviorConfig()
-        self.state = State.MOVING  # type: State
-
-        self._preturn_correction = 0.0  # type: float
+        self.state = State.MOVING
 
         print("[SignBehavior] initialised — detector ready")
 
-        self._tag_buffer = {}     # type: Dict[int, int]
-        self._saved_tag = None    # type: Optional[TagID]
+        self._tag_buffer = {}       # type: Dict[int, int]
+        self._saved_tag = None      # type: Optional[TagID]
 
-        self._hold_counter = 0    # type: int
-        self._turn_counter = 0    # type: int
-        self._creep_counter = 0   # type: int
-        self._check_counter = 0   # type: int
+        self._hold_counter = 0
+        self._turn_counter = 0
+        self._check_counter = 0
 
-        self._vehicle_seen_left = False   # type: bool
-        self._vehicle_seen_right = False  # type: bool
+        self._vehicle_seen_left = False
+        self._vehicle_seen_right = False
 
-        self._possible_turns = []  # type: List[str]
-        self._chosen_turn = None   # type: Optional[str]
+        self._possible_turns = []   # type: List[str]
+        self._chosen_turn = None    # type: Optional[str]
 
-        self._slow_factor = 1.0    # type: float
-        self._slow_target = 0.0    # type: float
+        self._slow_factor = 1.0
+        self._slow_target = 0.0
 
-        self._red_line_locked = False  # type: bool
+        self._red_line_locked = False
+        self._ignore_red_counter = 0
 
-        self.debug = {}  # type: dict
+        self.debug = {}
 
-        self._frame_rgb = None  # type: Optional[np.ndarray]
-
+        self._frame_rgb = None
         self._vehicle_detected = vehicle_detected
 
         self._left_offsets = []
         self._right_offsets = []
 
-        self._active_sign_op = None  # type: Optional[str]
+        self._active_sign_op = None
+        self._ignored_red_print_cooldown = 0
 
     def reset(self):
         self.state = State.MOVING
@@ -64,7 +61,6 @@ class SignBehaviorFSM:
 
         self._hold_counter = 0
         self._turn_counter = 0
-        self._creep_counter = 0
         self._check_counter = 0
 
         self._vehicle_seen_left = False
@@ -77,30 +73,32 @@ class SignBehaviorFSM:
         self._slow_target = 0.0
 
         self._red_line_locked = False
+        self._ignore_red_counter = 0
 
         self._left_offsets.clear()
         self._right_offsets.clear()
 
         self._active_sign_op = None
+        self._ignored_red_print_cooldown = 0
 
         self.debug = {}
 
         print("[SignBehavior] FSM reset")
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def step(self, frame_rgb, base_left, base_right, detections):
-        # type: (np.ndarray, float, float, list) -> Tuple[float, float]
         self._frame_rgb = frame_rgb
         detections = detections or []
 
         tags = detect_tags(self, frame_rgb)
         confirmed = confirm_tags(self, tags)
 
-        red_line = False if self._red_line_locked else bool(
-            detect_red_line(self, frame_rgb)
-        )
+        if self._ignore_red_counter > 0:
+            self._ignore_red_counter -= 1
+            red_line = False
+        elif self._red_line_locked:
+            red_line = False
+        else:
+            red_line = bool(detect_red_line(self, frame_rgb))
 
         left, right = self._fsm_step(
             confirmed,
@@ -115,13 +113,13 @@ class SignBehaviorFSM:
             "state": self.state.name,
             "confirmed_tags": [int(t) for t in confirmed],
             "saved_tag": int(self._saved_tag) if self._saved_tag is not None else None,
-            "red_line": red_line,
-            "red_locked": self._red_line_locked,
+            "red_line": bool(red_line),
+            "red_locked": bool(self._red_line_locked),
+            "ignore_red_counter": int(self._ignore_red_counter),
             "possible_turns": list(self._possible_turns),
             "chosen_turn": self._chosen_turn,
             "slow_factor": round(float(self._slow_factor), 3),
             "hold_counter": int(self._hold_counter),
-            "creep_counter": int(self._creep_counter),
             "check_counter": int(self._check_counter),
             "turn_counter": int(self._turn_counter),
         }
@@ -132,56 +130,66 @@ class SignBehaviorFSM:
     def state_name(self):
         return self.state.name
 
-    # ------------------------------------------------------------------
-    # FSM core
-    # ------------------------------------------------------------------
+    def _save_confirmed_sign(self, confirmed_tags):
+        # Prefer intersection signs over stop/yield if both are visible.
+        for raw_tag_id in confirmed_tags:
+            tag_id = resolve_tag(int(raw_tag_id))
+
+            if tag_id is None:
+                continue
+
+            if tag_id in _TAG_TURNS:
+                if self._saved_tag != tag_id:
+                    print(
+                        f"[SignBehavior] sign saved: intersection tag "
+                        f"raw={raw_tag_id}, resolved={int(tag_id)} "
+                        f"-> {_TAG_TURNS[tag_id]}"
+                    )
+
+                self._saved_tag = tag_id
+                return
+
+        for raw_tag_id in confirmed_tags:
+            tag_id = resolve_tag(int(raw_tag_id))
+
+            if tag_id is None:
+                continue
+
+            if tag_id in (TagID.STOP, TagID.YIELD):
+                if self._saved_tag != tag_id:
+                    label = "STOP" if tag_id == TagID.STOP else "YIELD"
+                    print(
+                        f"[SignBehavior] sign saved: {label} "
+                        f"(raw={raw_tag_id}, resolved={int(tag_id)})"
+                    )
+
+                self._saved_tag = tag_id
+                return
 
     def _fsm_step(self, confirmed_tags, detections, red_line, base_left, base_right, frame_rgb):
-        # type: (List[int], list, bool, float, float, np.ndarray) -> Tuple[float, float]
-
         # MOVING
         if self.state == State.MOVING:
-            # Save sign, but do not stop yet.
-            for raw_tag_id in confirmed_tags:
-                tag_id = resolve_tag(int(raw_tag_id))
+            self._save_confirmed_sign(confirmed_tags)
 
-                if tag_id is None:
-                    continue
-
-                if tag_id in _TAG_TURNS:
-                    if self._saved_tag != tag_id:
-                        print(
-                            f"[SignBehavior] sign saved: intersection tag "
-                            f"raw={raw_tag_id}, resolved={int(tag_id)} "
-                            f"-> {_TAG_TURNS[tag_id]}"
-                        )
-                    self._saved_tag = tag_id
-                    break
-
-            else:
-                for raw_tag_id in confirmed_tags:
-                    tag_id = resolve_tag(int(raw_tag_id))
-
-                    if tag_id is None:
-                        continue
-
-                    if tag_id in (TagID.STOP, TagID.YIELD):
-                        if self._saved_tag != tag_id:
-                            label = "STOP" if tag_id == TagID.STOP else "YIELD"
-                            print(
-                                f"[SignBehavior] sign saved: {label} "
-                                f"(raw={raw_tag_id}, resolved={int(tag_id)})"
-                            )
-                        self._saved_tag = tag_id
-                        break
-
-            # Red line is close enough: now execute sign behavior.
             if red_line:
-                self._red_line_locked = True
                 tag = self._saved_tag
 
+                # Important fix:
+                # Red line alone must NOT trigger countdown/intersection behavior.
+                # Otherwise false red-line detection causes move-stop-move-stop.
+                if tag is None and not self.cfg.default_forward_on_red_without_tag:
+                    if self._ignored_red_print_cooldown <= 0:
+                        print("[SignBehavior] red line ignored — no saved sign/tag")
+                        self._ignored_red_print_cooldown = 30
+                    else:
+                        self._ignored_red_print_cooldown -= 1
+
+                    return base_left, base_right
+
+                self._red_line_locked = True
+
                 if tag in _TAG_TURNS:
-                    self._possible_turns = _TAG_TURNS[tag]
+                    self._possible_turns = list(_TAG_TURNS[tag])
                     self._chosen_turn = self._pick_turn()
                     self._active_sign_op = f"intersection turn '{self._chosen_turn}'"
                     self._turn_counter = 0
@@ -193,11 +201,11 @@ class SignBehaviorFSM:
                         f"(from tag {tag}, options {self._possible_turns})"
                     )
 
-                elif tag == TagID.STOP or tag == TagID.YIELD:
+                    return base_left, base_right
+
+                if tag == TagID.STOP or tag == TagID.YIELD:
                     label = "STOP" if tag == TagID.STOP else "YIELD"
                     self._active_sign_op = f"{label} sign"
-
-                    # Brake naturally from current speed after red line is close.
                     self._slow_target = 0.0
                     self.state = State.SLOWING
 
@@ -206,25 +214,22 @@ class SignBehaviorFSM:
                         f"(saved_tag={tag})"
                     )
 
-                else:
-                    self._chosen_turn = "forward"
-                    self._active_sign_op = "intersection turn 'forward' (no tag)"
-                    self._turn_counter = 0
-                    self._saved_tag = None
-                    self.state = State.INTERSECT
+                    return base_left, base_right
 
-                    print(
-                        "[SignBehavior] >>> INTERSECT — direction: forward "
-                        "(No saved tag, default behavior)"
-                    )
+                # Optional fallback, normally disabled by config.
+                self._chosen_turn = "forward"
+                self._active_sign_op = "intersection turn 'forward' without tag"
+                self._turn_counter = 0
+                self._saved_tag = None
+                self.state = State.INTERSECT
 
+                print("[SignBehavior] >>> INTERSECT — default forward")
                 return base_left, base_right
 
-            # Sign detected but red line is not close yet:
-            # slow approach gradually instead of stopping instantly.
+            # Sign detected but red line not close yet: slow approach.
             if self._saved_tag is not None:
-                target_factor = getattr(self.cfg, "approach_speed_factor", 0.72)
-                ramp_factor = getattr(self.cfg, "approach_ramp_factor", 0.98)
+                target_factor = self.cfg.approach_speed_factor
+                ramp_factor = self.cfg.approach_ramp_factor
 
                 self._slow_factor = max(target_factor, self._slow_factor * ramp_factor)
 
@@ -234,102 +239,70 @@ class SignBehaviorFSM:
             return base_left, base_right
 
         # SLOWING
-        elif self.state == State.SLOWING:
-            target = self._slow_target
+        if self.state == State.SLOWING:
             self._slow_factor *= self.cfg.slow_ramp_factor
-            factor = max(self._slow_factor, target)
+            factor = max(self._slow_factor, self._slow_target)
 
             left = base_left * factor
             right = base_right * factor
 
-            if target == 0.0:
-                if self._slow_factor < self.cfg.stopped_speed_threshold:
-                    self._slow_factor = 0.0
-                    self._hold_counter = 0
-                    self._saved_tag = None
-                    self.state = State.STOPPED
-                    print("[SignBehavior] >>> STOPPED at red line")
-                    return 0.0, 0.0
-            else:
-                if self._slow_factor <= target + 0.02:
-                    self._creep_counter = 0
-                    self.state = State.YIELD_CREEP
-                    print(f"[SignBehavior] >>> YIELD_CREEP at speed ~{target:.2f}")
-                    spd = self.cfg.yield_min_speed
-                    return spd, spd
+            if self._slow_factor < self.cfg.stopped_speed_threshold:
+                self._slow_factor = 0.0
+                self._hold_counter = 0
+                self._saved_tag = None
+                self.state = State.STOPPED
+                print("[SignBehavior] >>> STOPPED at red line")
+                return 0.0, 0.0
 
             return left, right
 
-        # YIELD_CREEP
-        elif self.state == State.YIELD_CREEP:
-            if self._creep_counter < self.cfg.yield_creep_frames:
-                self._creep_counter += 1
-
-                seen, _ = self._vehicle_detected(detections)
-                if seen:
-                    self._hold_counter = 0
-                    self.state = State.STOPPED
-                    print("[SignBehavior] >>> vehicle seen during yield creep — STOPPED")
-                    return 0.0, 0.0
-
-                return self.cfg.yield_min_speed, self.cfg.yield_min_speed
-
-            self._check_counter = 0
-            self._vehicle_seen_left = False
-            self._vehicle_seen_right = False
-            self.state = State.CHECKPATH
-            print("[SignBehavior] >>> YIELD_CREEP done — CHECKPATH")
-            return 0.0, 0.0
-
         # STOPPED
-        elif self.state == State.STOPPED:
+        if self.state == State.STOPPED:
             self._hold_counter += 1
 
+            if self._hold_counter < self.cfg.stop_hold_frames:
+                return 0.0, 0.0
 
             self._check_counter = 0
             self._vehicle_seen_left = False
             self._vehicle_seen_right = False
+            self._left_offsets.clear()
+            self._right_offsets.clear()
+
             self.state = State.CHECKPATH
-            print("[SignBehavior] >>> CHECKPATH — sweeping for cars")
+            print("[SignBehavior] >>> CHECKPATH — checking for vehicles")
             return 0.0, 0.0
 
         # CHECKPATH
-        elif self.state == State.CHECKPATH:
+        if self.state == State.CHECKPATH:
             return self._checkpath_step(detections)
 
         # POST_STOP
-        elif self.state == State.POST_STOP:
+        if self.state == State.POST_STOP:
             if self._turn_counter < self.cfg.post_stop_frames:
                 self._turn_counter += 1
                 return self.cfg.post_stop_speed, self.cfg.post_stop_speed
 
-            self._red_line_locked = False
-            self.state = State.MOVING
-
-            print("[SignBehavior] >>> POST_STOP done — MOVING (red-line unlocked)")
-            print(f"[SignBehavior] COMPLETE: {self._active_sign_op} — robot resumed driving")
-
+            self._finish_behavior()
             return base_left, base_right
 
         # INTERSECT
-        elif self.state == State.INTERSECT:
+        if self.state == State.INTERSECT:
             return self._intersect_step(base_left, base_right)
 
-        elif self.state == State.PRE_TURN:
+        # PRE_TURN
+        if self.state == State.PRE_TURN:
             return self._preturn_step(base_left, base_right)
 
-        elif self.state == State.TURNING:
+        # TURNING
+        if self.state == State.TURNING:
             return self._turning_step(base_left, base_right)
 
         # EXITING
-        elif self.state == State.EXITING:
+        if self.state == State.EXITING:
             return self._exiting_step(base_left, base_right)
 
         return base_left, base_right
-
-    # ------------------------------------------------------------------
-    # CHECKPATH
-    # ------------------------------------------------------------------
 
     def _checkpath_step(self, detections):
         spd = self.cfg.check_turn_speed
@@ -354,9 +327,9 @@ class SignBehaviorFSM:
             self._check_counter += 1
             return -spd, spd
 
-        # Hold left
-        elif c < phase_a_settle:
-            if c > phase_a_end + 2:
+        # Hold left and detect
+        if c < phase_a_settle:
+            if c > phase_a_end + 1:
                 seen, offset = self._vehicle_detected(detections)
                 if seen:
                     self._vehicle_seen_left = True
@@ -366,13 +339,13 @@ class SignBehaviorFSM:
             return 0.0, 0.0
 
         # Sweep to right
-        elif c < phase_b_end:
+        if c < phase_b_end:
             self._check_counter += 1
             return spd, -spd
 
-        # Hold right
-        elif c < phase_b_settle:
-            if c > phase_b_end + 2:
+        # Hold right and detect
+        if c < phase_b_settle:
+            if c > phase_b_end + 1:
                 seen, offset = self._vehicle_detected(detections)
                 if seen:
                     self._vehicle_seen_right = True
@@ -382,63 +355,42 @@ class SignBehaviorFSM:
             return 0.0, 0.0
 
         # Re-center
-        elif c < phase_c_end:
+        if c < phase_c_end:
             self._check_counter += 1
             return -spd, spd
 
         # Decision
-        else:
-            left_stationary = is_stationary(self._left_offsets)
-            right_stationary = is_stationary(self._right_offsets)
+        right_stationary = is_stationary(self._right_offsets)
 
-            # Moving vehicle on left
-            if self._vehicle_seen_left and not left_stationary:
-                print("[SignBehavior] moving vehicle on left — waiting")
-                self._check_counter = 0
-                self._vehicle_seen_left = False
-                self._vehicle_seen_right = False
-                self._left_offsets.clear()
-                self._right_offsets.clear()
-                return 0.0, 0.0
+        # Project rule:
+        # Vehicle on right => wait.
+        # Vehicle on left => we have priority.
+        if self._vehicle_seen_right:
+            if right_stationary:
+                print("[SignBehavior] vehicle on right — yielding")
+            else:
+                print("[SignBehavior] moving vehicle on right — yielding")
 
-            # Moving vehicle on right
-            if self._vehicle_seen_right and not right_stationary:
-                print("[SignBehavior] moving vehicle on right — waiting")
-                self._check_counter = 0
-                self._vehicle_seen_left = False
-                self._vehicle_seen_right = False
-                self._left_offsets.clear()
-                self._right_offsets.clear()
-                return 0.0, 0.0
-
-            # Stopped robot on right gets priority
-            if self._vehicle_seen_right and right_stationary:
-                print("[SignBehavior] stopped vehicle on right — yielding")
-                self._check_counter = 0
-                self._vehicle_seen_left = False
-                self._vehicle_seen_right = False
-                self._left_offsets.clear()
-                self._right_offsets.clear()
-                return 0.0, 0.0
-
-            # Stopped robot on left => we go
-            if self._vehicle_seen_left and left_stationary:
-                print("[SignBehavior] stopped vehicle on left — taking priority")
-
-            self._turn_counter = 0
-            self.state = State.POST_STOP
-
+            self._check_counter = 0
             self._vehicle_seen_left = False
             self._vehicle_seen_right = False
             self._left_offsets.clear()
             self._right_offsets.clear()
-
-            print("[SignBehavior] >>> path clear — POST_STOP")
             return 0.0, 0.0
 
-    # ------------------------------------------------------------------
-    # INTERSECT
-    # ------------------------------------------------------------------
+        if self._vehicle_seen_left:
+            print("[SignBehavior] vehicle on left — priority, continuing")
+
+        self._turn_counter = 0
+        self.state = State.POST_STOP
+
+        self._vehicle_seen_left = False
+        self._vehicle_seen_right = False
+        self._left_offsets.clear()
+        self._right_offsets.clear()
+
+        print("[SignBehavior] >>> path clear — POST_STOP")
+        return 0.0, 0.0
 
     def _intersect_step(self, base_left, base_right):
         turn = self._chosen_turn or "forward"
@@ -450,17 +402,16 @@ class SignBehaviorFSM:
             return self.cfg.preturn_speed, self.cfg.preturn_speed
 
         self.state = State.TURNING
-        print("[SignBehavior] >>> TURNING 'forward' (no pre-turn)")
+        print("[SignBehavior] >>> TURNING 'forward'")
         return self.cfg.intersect_forward_speed
 
     def _preturn_step(self, base_left, base_right):
         turn = self._chosen_turn or "forward"
 
-        total = (
-            self.cfg.preturn_right_frames
-            if turn == "right"
-            else self.cfg.preturn_left_frames
-        )
+        if turn == "right":
+            total = self.cfg.preturn_right_frames
+        else:
+            total = self.cfg.preturn_left_frames
 
         if self._turn_counter < total:
             self._turn_counter += 1
@@ -491,7 +442,7 @@ class SignBehaviorFSM:
 
         if self._turn_counter < total:
             self._turn_counter += 1
-            return speeds_map.get(turn, (base_left, base_right))
+            return speeds_map.get(turn, self.cfg.intersect_forward_speed)
 
         self._turn_counter = 0
         self.state = State.EXITING
@@ -499,28 +450,32 @@ class SignBehaviorFSM:
         print(f"[SignBehavior] >>> TURNING '{turn}' done — EXITING")
         return base_left, base_right
 
-    # ------------------------------------------------------------------
-    # EXITING
-    # ------------------------------------------------------------------
-
     def _exiting_step(self, base_left, base_right):
         self._turn_counter += 1
 
         if self._turn_counter >= self.cfg.exit_timeout_frames:
-            print(f"[SignBehavior] COMPLETE: {self._active_sign_op} — robot resumed driving")
-
-            self._red_line_locked = False
-            self._possible_turns = []
-            self._chosen_turn = None
-            self.state = State.MOVING
-
+            self._finish_behavior()
             return base_left, base_right
 
         return self.cfg.exit_speed, self.cfg.exit_speed
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+    def _finish_behavior(self):
+        print(f"[SignBehavior] COMPLETE: {self._active_sign_op} — robot resumed driving")
+
+        self._red_line_locked = False
+        self._ignore_red_counter = self.cfg.red_ignore_after_frames
+
+        self._possible_turns = []
+        self._chosen_turn = None
+        self._saved_tag = None
+        self._active_sign_op = None
+
+        self._slow_factor = 1.0
+        self._turn_counter = 0
+        self._hold_counter = 0
+        self._check_counter = 0
+
+        self.state = State.MOVING
 
     def _pick_turn(self):
         return random.choice(self._possible_turns) if self._possible_turns else "forward"

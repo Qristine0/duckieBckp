@@ -131,8 +131,8 @@ def detect_tags(signBehavior, frame_rgb):
         for c, tid in zip(corners, ids.flatten()):
             tags.append({"tag_id": int(tid), "corners": c.reshape(4, 2)})
 
-        if tags:
-            print("[SignBehavior] tags visible: {}".format([t['tag_id'] for t in tags]))
+        # if tags:
+            # print("[SignBehavior] tags visible: {}".format([t['tag_id'] for t in tags]))
         return tags
 
     except AttributeError:
@@ -140,8 +140,8 @@ def detect_tags(signBehavior, frame_rgb):
 
     # Raw fallback: no contrib required
     tags = _raw_detect(gray)
-    if tags:
-        print("[SignBehavior] tags visible (raw): {}".format([t['tag_id'] for t in tags]))
+    # if tags:
+    #     print("[SignBehavior] tags visible (raw): {}".format([t['tag_id'] for t in tags]))
     return tags
 
 
@@ -163,7 +163,7 @@ def confirm_tags(signBehavior, raw_tags):
         if cnt >= tag_confirm_frames
     ]
 
-    if confirmed:
-        print("[SignBehavior] confirmed tags: {}".format(confirmed))
+    # if confirmed:
+    #     print("[SignBehavior] confirmed tags: {}".format(confirmed))
 
     return confirmed
