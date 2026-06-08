@@ -98,7 +98,7 @@ class SignBehaviorConfig:
 
         # CHECKPATH sweep
         self.check_left_frames: int = kwargs.pop("check_left_frames", 6)
-        self.check_right_frames: int = kwargs.pop("check_right_frames", 4)
+        self.check_right_frames: int = kwargs.pop("check_right_frames", 6)
         self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.17)
         self.check_settle_frames: int = kwargs.pop("check_settle_frames", 15)
 
