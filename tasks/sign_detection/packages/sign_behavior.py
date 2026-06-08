@@ -124,7 +124,7 @@ class SignBehaviorFSM:
             "turn_counter": int(self._turn_counter),
         }
 
-        return left, right
+        return left, right, self.state
 
     @property
     def state_name(self):

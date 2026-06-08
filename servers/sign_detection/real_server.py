@@ -77,8 +77,8 @@ def manual_control_loop():
         time.sleep(0.05)
 
 
-def _should_stop(detections):
-    return student_should_stop(detections)
+def _should_stop(detections, state):
+    return student_should_stop(detections, state)
 
 
 def visualize(frame_bgr):
@@ -99,11 +99,8 @@ def visualize(frame_bgr):
         _stopped_by_det = False
         _stop_reason = ''
     elif lane_agent is not None:
-        # todo pass shoudl_stop boolean instead of zeroing it on your own
-
-        pwm_left, pwm_right = lane_agent.compute_commands(frame_rgb, detections)
-
-        should_stop_flag, reason = _should_stop(detections)
+        pwm_left, pwm_right, state = lane_agent.compute_commands(frame_rgb, detections)
+        should_stop_flag, reason = _should_stop(detections, state)
         _stopped_by_det = should_stop_flag
         _stop_reason = reason
 

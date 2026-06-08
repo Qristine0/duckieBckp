@@ -13,6 +13,7 @@ class TagID(IntEnum):
 _TAG_ID_MAP: Dict[int, TagID] = {
     1: TagID.STOP,
 
+    # 1: TagID.TURN_RIGHT_FWD,
     9: TagID.TURN_RIGHT_FWD,
     10: TagID.TURN_LEFT_FWD,
     11: TagID.TURN_LEFT_RIGHT,
@@ -97,7 +98,7 @@ class SignBehaviorConfig:
         self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.055)
 
         # CHECKPATH sweep
-        self.check_left_frames: int = kwargs.pop("check_left_frames", 6)
+        self.check_left_frames: int = kwargs.pop("check_left_frames", 6)   
         self.check_right_frames: int = kwargs.pop("check_right_frames", 6)
         self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.17)
         self.check_settle_frames: int = kwargs.pop("check_settle_frames", 15)

@@ -67,14 +67,14 @@ class LaneServoingAgentWithSigns(LaneServoingAgent):
 
         base_left, base_right = super().compute_commands(image)
 
-        left, right = self._sign_fsm.step(
+        left, right, state = self._sign_fsm.step(
             image,
             base_left,
             base_right,
             detections or [],
         )
 
-        return left, right
+        return left, right, state
 
     @property
     def sign_state(self):
@@ -85,7 +85,7 @@ class LaneServoingAgentWithSigns(LaneServoingAgent):
         return self._sign_fsm.debug
 
     def step(self, image, wheels_driver, detections=None):
-        left, right = self.compute_commands(image, detections)
+        left, right, _ = self.compute_commands(image, detections)
         wheels_driver.set_wheels_speed(left, right)
         return left, right
 

@@ -145,7 +145,6 @@ def _is_duck_candidate(candidate: dict, frame_w: int, frame_h: int) -> bool:
 # =========================================================
 # TRUCK FILTERING
 # =========================================================
-
 def _is_truck_candidate(candidate: dict, frame_w: int, frame_h: int) -> bool:
     x1, y1, x2, y2 = candidate["bbox"]
 
@@ -226,6 +225,7 @@ def detect_obstacles(frame_rgb: np.ndarray) -> List[Detection]:
         detections.append((bbox, score, 1))
 
     return detections
+    
 
 
 # =========================================================
@@ -236,20 +236,21 @@ vehicle_min_bbox_area = 800
 
 
 def vehicle_detected(detections):
-    # for (x1, y1, x2, y2), score, cls_id in detections:
-    #     if cls_id != 1:
-    #         continue
-    #
-    #     area = (x2 - x1) * (y2 - y1)
-    #
-    #     if area < vehicle_min_bbox_area:
-    #         continue
-    #
-    #     centre_x = (x1 + x2) / 2.0
-    #     offset = abs(centre_x - IMG_WIDTH / 2) / IMG_WIDTH
-    #
-    #     print(f"[SignBehavior] vehicle detected (area={area:.0f}, offset={offset:.3f})")
-    #     return True, offset
+    for (x1, y1, x2, y2), score, cls_id in detections:
+        if cls_id != 1:
+            continue
+    
+        area = (x2 - x1) * (y2 - y1)
+
+        if area < vehicle_min_bbox_area:
+            continue
+    
+        centre_x = (x1 + x2) / 2.0
+        offset = abs(centre_x - IMG_WIDTH / 2) / IMG_WIDTH
+        print(f"{area:.0f}, {centre_x:.2f}")
+    
+        print(f"[SignBehavior] vehicle detected (area={area:.0f}, offset={offset:.3f})")
+        return True, offset
 
     return False, 0.0
 
@@ -302,6 +303,7 @@ def _truck_close_enough(
 
     box_w = x2 - x1
     box_h = y2 - y1
+    area   = box_w * box_h
     cx = (x1 + x2) / 2.0
 
     if score < 0.20:
@@ -309,6 +311,10 @@ def _truck_close_enough(
 
     if cx < IMG_WIDTH * 0.06 or cx > IMG_WIDTH * 0.94:
         return False
+
+
+    # todo: add area constraint
+    # if area < 3000: return False
 
     # Main distance rule.
     if y2 >= IMG_HEIGHT * TRUCK_STOP_Y2_RATIO:
@@ -321,49 +327,54 @@ def _truck_close_enough(
     return False
 
 
+# state - for different behavior in diff states
+# MOVING - yellow duck between yellow and white duck
+# PRE_TURN, TURNING - no lines
 def should_stop(
-    detections: List[Detection],
+    detections: List[Detection], state
 ) -> Tuple[bool, str]:
     global _duck_counter, _truck_counter, _stop_latch
-    #
-    # if detections is None:
-    #     detections = []
-    #
-    # duck_threat = False
-    # truck_threat = False
-    # reason = ""
-    #
-    # for bbox, score, cls_id in detections:
-    #     if cls_id == 0:
-    #         if _duck_close_enough(bbox, score):
-    #             duck_threat = True
-    #             reason = f"duckie close enough score={score:.2f} bbox={bbox}"
-    #
-    #     elif cls_id == 1:
-    #         if _truck_close_enough(bbox, score):
-    #             truck_threat = True
-    #             reason = f"truck close enough score={score:.2f} bbox={bbox}"
-    #
-    # if duck_threat:
-    #     _duck_counter += 1
-    # else:
-    #     _duck_counter = max(0, _duck_counter - 1)
-    #
-    # if truck_threat:
-    #     _truck_counter += 1
-    # else:
-    #     _truck_counter = max(0, _truck_counter - 1)
-    #
-    # confirmed_duck = _duck_counter >= DUCK_CONFIRM_FRAMES
-    # confirmed_truck = _truck_counter >= TRUCK_CONFIRM_FRAMES
-    #
-    # if confirmed_duck or confirmed_truck:
-    #     _stop_latch = STOP_LATCH_FRAMES
-    # else:
-    #     _stop_latch = max(0, _stop_latch - 1)
-    #
-    # if _stop_latch > 0:
-    #     return True, reason or "stop latch active"
+    
+    if detections is None:
+        detections = []
+    
+    duck_threat = False
+    truck_threat = False
+    reason = ""
+    
+    for bbox, score, cls_id in detections:
+        # if cls_id == 0:
+        #     if _duck_close_enough(bbox, score):
+        #         duck_threat = True
+        #         reason = f"duckie close enough score={score:.2f} bbox={bbox}"
+    
+        # elif cls_id == 1:
+        if cls_id == 1:
+            if _truck_close_enough(bbox, score):
+                truck_threat = True
+                reason = f"truck close enough score={score:.2f} bbox={bbox}"
+    
+    if duck_threat:
+        _duck_counter += 1
+    else:
+        _duck_counter = max(0, _duck_counter - 1)
+    
+    if truck_threat:
+        _truck_counter += 1
+    else:
+        _truck_counter = max(0, _truck_counter - 1)
+    
+    confirmed_duck = _duck_counter >= DUCK_CONFIRM_FRAMES
+    confirmed_truck = _truck_counter >= TRUCK_CONFIRM_FRAMES
+    
+    if confirmed_duck or confirmed_truck:
+        _stop_latch = STOP_LATCH_FRAMES
+    else:
+        _stop_latch = max(0, _stop_latch - 1)
+    
+    if _stop_latch > 0:
+        print(reason)
+        return True, reason or "stop latch active"
 
     return False, ""
 
