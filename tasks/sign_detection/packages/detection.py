@@ -236,20 +236,20 @@ vehicle_min_bbox_area = 800
 
 
 def vehicle_detected(detections):
-    for (x1, y1, x2, y2), score, cls_id in detections:
-        if cls_id != 1:
-            continue
-
-        area = (x2 - x1) * (y2 - y1)
-
-        if area < vehicle_min_bbox_area:
-            continue
-
-        centre_x = (x1 + x2) / 2.0
-        offset = abs(centre_x - IMG_WIDTH / 2) / IMG_WIDTH
-
-        print(f"[SignBehavior] vehicle detected (area={area:.0f}, offset={offset:.3f})")
-        return True, offset
+    # for (x1, y1, x2, y2), score, cls_id in detections:
+    #     if cls_id != 1:
+    #         continue
+    #
+    #     area = (x2 - x1) * (y2 - y1)
+    #
+    #     if area < vehicle_min_bbox_area:
+    #         continue
+    #
+    #     centre_x = (x1 + x2) / 2.0
+    #     offset = abs(centre_x - IMG_WIDTH / 2) / IMG_WIDTH
+    #
+    #     print(f"[SignBehavior] vehicle detected (area={area:.0f}, offset={offset:.3f})")
+    #     return True, offset
 
     return False, 0.0
 

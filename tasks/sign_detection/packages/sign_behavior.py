@@ -303,6 +303,8 @@ class SignBehaviorFSM:
         if self.state == State.EXITING:
             return self._exiting_step(base_left, base_right)
 
+
+        print("servoing")
         return base_left, base_right
 
     def _checkpath_step(self, detections):

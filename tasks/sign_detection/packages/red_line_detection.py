@@ -33,7 +33,7 @@ def detect_red_line(signBehavior, frame_rgb: np.ndarray) -> bool:
     mask = mask1 | mask2
 
     kernel_open = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
-    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 5))
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (11, 5))
 
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_open)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close)
@@ -68,15 +68,15 @@ def detect_red_line(signBehavior, frame_rgb: np.ndarray) -> bool:
         y2 = y + bh
         aspect = bw / float(bh + 1e-6)
 
-        # Red stop line should be mostly horizontal.
-        if aspect < 1.7:
+        # Red stop line should be horizontal/wide.
+        if aspect < 1.6:
             continue
 
         # Must be wide enough.
         if bw < strip_w_actual * signBehavior.cfg.red_min_width_frac:
             continue
 
-        # Must be close enough to the robot.
+        # Stop before the line, not on top of it.
         if y2 < strip_h_actual * close_ratio:
             continue
 
@@ -99,7 +99,7 @@ def detect_red_line(signBehavior, frame_rgb: np.ndarray) -> bool:
         return False
 
     print(
-        "[SignBehavior] red line close — "
+        "[SignBehavior] red line candidate — "
         f"area={best['area']:.0f}, "
         f"bbox=({best['x']},{best['y']},{best['w']},{best['h']}), "
         f"y2_ratio={best['y2'] / strip_h_actual:.2f}, "

@@ -60,16 +60,16 @@ class SignBehaviorConfig:
 
     def __init__(self, **kwargs):
         # Red-line detection
-        self.red_strip_frac: float = kwargs.pop("red_strip_frac", 0.34)
+        self.red_strip_frac: float = kwargs.pop("red_strip_frac", 0.32)
 
         self.red_roi_left: float = kwargs.pop("red_roi_left", 0.24)
         self.red_roi_right: float = kwargs.pop("red_roi_right", 0.76)
 
         # Bigger = stop later / closer to red line.
-        self.red_line_close_y2_ratio: float = kwargs.pop("red_line_close_y2_ratio", 0.80)
+        self.red_line_close_y2_ratio: float = kwargs.pop("red_line_close_y2_ratio", 0.62)
 
         self.red_pixel_frac: float = kwargs.pop("red_pixel_frac", 0.018)
-        self.red_min_area: float = kwargs.pop("red_min_area", 70.0)
+        self.red_min_area: float = kwargs.pop("red_min_area", 65.0)
         self.red_min_width_frac: float = kwargs.pop("red_min_width_frac", 0.12)
 
         self.red_hsv_low1: Tuple[int, int, int] = kwargs.pop("red_hsv_low1", (0, 100, 70))
@@ -85,7 +85,7 @@ class SignBehaviorConfig:
         )
 
         # After finishing sign behavior, ignore the same red line for a while.
-        self.red_ignore_after_frames: int = kwargs.pop("red_ignore_after_frames", 25)
+        self.red_ignore_after_frames: int = kwargs.pop("red_ignore_after_frames", 35)
 
         # Slow approach after seeing a sign but before red line.
         self.approach_speed_factor: float = kwargs.pop("approach_speed_factor", 0.75)
@@ -97,24 +97,24 @@ class SignBehaviorConfig:
         self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.055)
 
         # CHECKPATH sweep
-        self.check_left_frames: int = kwargs.pop("check_left_frames", 8)
-        self.check_right_frames: int = kwargs.pop("check_right_frames", 8)
-        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.05)
-        self.check_settle_frames: int = kwargs.pop("check_settle_frames", 8)
+        self.check_left_frames: int = kwargs.pop("check_left_frames", 6)
+        self.check_right_frames: int = kwargs.pop("check_right_frames", 4)
+        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.17)
+        self.check_settle_frames: int = kwargs.pop("check_settle_frames", 15)
 
         # POST_STOP
-        self.post_stop_frames: int = kwargs.pop("post_stop_frames", 18)
-        self.post_stop_speed: float = kwargs.pop("post_stop_speed", 0.13)
+        self.post_stop_frames: int = kwargs.pop("post_stop_frames", 24)
+        self.post_stop_speed: float = kwargs.pop("post_stop_speed", 0.4)
 
         # Pre-turn forward creep
-        self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 5)
-        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 5)
+        self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 10)
+        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 4)
         self.preturn_speed: float = kwargs.pop("preturn_speed", 0.30)
 
         # Intersection manoeuvres
-        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 10)
+        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 15)
         self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 20)
-        self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 12)
+        self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 15)
 
         self.intersect_forward_speed: Tuple[float, float] = kwargs.pop(
             "intersect_forward_speed",
@@ -126,12 +126,12 @@ class SignBehaviorConfig:
         )
         self.intersect_right_speed: Tuple[float, float] = kwargs.pop(
             "intersect_right_speed",
-            (0.57, 0.19),
+            (0.40, 0.06),
         )
 
         # Exiting after intersection
         self.exit_speed: float = kwargs.pop("exit_speed", 0.40)
-        self.exit_timeout_frames: int = kwargs.pop("exit_timeout_frames", 5)
+        self.exit_timeout_frames: int = kwargs.pop("exit_timeout_frames", 3)
 
         for key, value in kwargs.items():
             setattr(self, key, value)

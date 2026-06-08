@@ -101,7 +101,7 @@ def visualize(frame_bgr):
     elif lane_agent is not None:
         # todo pass shoudl_stop boolean instead of zeroing it on your own
 
-        pwm_left, pwm_right = lane_agent.compute_commands(frame_rgb)
+        pwm_left, pwm_right = lane_agent.compute_commands(frame_rgb, detections)
 
         should_stop_flag, reason = _should_stop(detections)
         _stopped_by_det = should_stop_flag
