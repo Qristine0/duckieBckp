@@ -26,17 +26,74 @@ def _strip_center_x(mask: np.ndarray, y: int, prefer_right: bool = False):
     y1 = max(0, y - _SLICE_TOL)
     y2 = min(h, y + _SLICE_TOL)
 
-    strip = mask[y1:y2, :]
+    strip = mask[y1:y2,:]
     idx = np.where(strip > 0)[1]
 
     if len(idx) == 0:
         return None
 
-    if prefer_right:
-        # Use right-biased value so random gray/floor blobs do not pull the line left.
-        return int(np.percentile(idx, 70))
+    idx = np.sort(idx)
 
-    return int(np.median(idx))
+    # Split pixels into separate clusters.
+    gaps = np.where(np.diff(idx) > 20)[0] + 1
+    clusters = np.split(idx, gaps)
+
+    valid_clusters = []
+
+    for cluster in clusters:
+        if len(cluster) < 3:
+            continue
+
+        cluster_left = int(cluster[0])
+        cluster_right = int(cluster[-1])
+        cluster_width = cluster_right - cluster_left + 1
+        cluster_center = float(np.median(cluster))
+
+        # Reject tiny noise.
+        if cluster_width < 3:
+            continue
+
+        if prefer_right:
+            # WHITE LINE:
+            # We only want the right-side white border.
+            if cluster_center < w * 0.35:
+                continue
+
+            # Reject far-right other-map white line in upper/middle part.
+            if cluster_center > w * 0.88 and y < h * 0.78:
+                continue
+
+        else:
+            # YELLOW LINE:
+            # Yellow road line should usually be left/center, not far right.
+            if cluster_center > w * 0.75:
+                continue
+
+            # Ignore very far-left yellow noise.
+            if cluster_center < w * 0.05:
+                continue
+
+        valid_clusters.append(cluster)
+
+    if not valid_clusters:
+        return None
+
+    if prefer_right:
+        # WHITE:
+        # Choose nearest right-side white cluster.
+        # Then use its LEFT edge, because the lane is left of the white line.
+        best = min(valid_clusters, key=lambda c: np.median(c))
+
+        left_edge = int(best[0])
+        return left_edge + 8
+
+    # YELLOW:
+    # Choose strongest yellow cluster.
+    # Then use its RIGHT edge, because the lane is right of the yellow line.
+    best = max(valid_clusters, key=lambda c: len(c))
+
+    right_edge = int(best[-1])
+    return right_edge - 6
 
 
 def detect_lines_in_slices(
@@ -140,7 +197,7 @@ class LaneServoingAgent:
         raw_steering = self.p_gain * error + self.d_gain * error_diff
         raw_steering = float(np.clip(raw_steering, -self.max_steer, self.max_steer))
 
-        # Smooth steering to prevent sudden hard turns when white line flickers.
+        # Smooth steering to prevent sudden hard turns when white/yellow line flickers.
         max_delta = 0.035
         delta = np.clip(raw_steering - self._filtered_steering, -max_delta, max_delta)
 
@@ -166,7 +223,6 @@ class LaneServoingAgent:
         left = speed - steering
         right = speed + steering
 
-        # No aggressive curve boost. It caused extreme turns.
         return float(np.clip(left, 0.0, 0.35)), float(np.clip(right, 0.0, 0.35))
 
     def _smooth(self, left, right, both_visible):
