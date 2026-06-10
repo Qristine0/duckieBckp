@@ -26,10 +26,7 @@ CLASS_COLORS = {
 Detection = Tuple[Tuple[int, int, int, int], float, int]
 
 
-# =========================================================
-# TRUCK CONFIG — kept close to your working uncommented logic
-# =========================================================
-vehicle_min_bbox_area = 800
+
 
 
 # =========================================================
@@ -269,14 +266,13 @@ def detect_obstacles(frame_rgb: np.ndarray) -> List[Detection]:
     return detections
 
 
-# =========================================================
-# VEHICLE DETECTION — intersection crossing check
-# =========================================================
+
+
+
+vehicle_min_bbox_area = 800
+# intersection crossing check
 def vehicle_detected(detections):
-    """
-    Kept close to your working truck logic.
-    Used by sign_behavior.py during CHECKPATH.
-    """
+    # Used by sign_behavior.py during CHECKPATH.
     if detections is None:
         detections = []
 
@@ -338,29 +334,29 @@ def should_stop(
         # -----------------------------
         # DUCK STOP
         # -----------------------------
-        if cls_id == 0:
-            if _duck_close_enough(bbox, score):
-                duck_threat = True
-                reason = f"duckie close enough score={score:.2f} bbox={bbox}"
-                print(f"[ObstacleStop] DUCKIE candidate close (area={area:.0f})")
+        # if cls_id == 0:
+        #     if _duck_close_enough(bbox, score):
+        #         duck_threat = True
+        #         reason = f"duckie close enough score={score:.2f} bbox={bbox}"
+        #         print(f"[ObstacleStop] DUCKIE candidate close (area={area:.0f})")
 
         # -----------------------------
         # TRUCK STOP
         # -----------------------------
         # Kept from your working uncommented version.
-        elif cls_id == 1:
-            if area < 50000:
-                continue
-            if height < 15:
-                continue
-            if cy < IMG_HEIGHT * 0.25:
-                continue
-            if cx < 0.08 * IMG_WIDTH or cx > 0.92 * IMG_WIDTH:
-                continue
+        # if cls_id == 1:
+        #     if area < 50000:
+        #         continue
+        #     if height < 15:
+        #         continue
+        #     if cy < IMG_HEIGHT * 0.25:
+        #         continue
+        #     if cx < 0.08 * IMG_WIDTH or cx > 0.92 * IMG_WIDTH:
+        #         continue
 
-            truck_threat = True
-            reason = f"truck too close area={area:.0f} h={height:.0f}"
-            print(f"[ObstacleStop] TRUCK STOP (area={area:.0f}, h={height:.0f})")
+        #     truck_threat = True
+        #     reason = f"truck too close area={area:.0f} h={height:.0f}"
+        #     print(f"[ObstacleStop] TRUCK STOP (area={area:.0f}, h={height:.0f})")
 
     if duck_threat:
         _duck_counter += 1

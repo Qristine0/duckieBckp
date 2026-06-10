@@ -60,8 +60,8 @@ def _strip_center_x(mask: np.ndarray, y: int, prefer_right: bool = False):
                 continue
 
             # Reject far-right other-map white line in upper/middle part.
-            if cluster_center > w * 0.88 and y < h * 0.78:
-                continue
+            # if cluster_center > w * 0.88 and y < h * 0.78:
+            #     continue
 
         else:
             # YELLOW LINE:
@@ -70,8 +70,8 @@ def _strip_center_x(mask: np.ndarray, y: int, prefer_right: bool = False):
                 continue
 
             # Ignore very far-left yellow noise.
-            if cluster_center < w * 0.05:
-                continue
+            # if cluster_center < w * 0.05:
+                # continue
 
         valid_clusters.append(cluster)
 
@@ -85,15 +85,17 @@ def _strip_center_x(mask: np.ndarray, y: int, prefer_right: bool = False):
         best = min(valid_clusters, key=lambda c: np.median(c))
 
         left_edge = int(best[0])
-        return left_edge + 8
+        return left_edge 
 
     # YELLOW:
     # Choose strongest yellow cluster.
     # Then use its RIGHT edge, because the lane is right of the yellow line.
-    best = max(valid_clusters, key=lambda c: len(c))
+    # best = max(valid_clusters, key=lambda c: len(c))
+    # todo won't work for duckies
+    best = max(valid_clusters, key=lambda c: np.median(c))
 
     right_edge = int(best[-1])
-    return right_edge - 6
+    return right_edge - 10
 
 
 def detect_lines_in_slices(
@@ -130,15 +132,26 @@ class LaneServoingAgent:
         except Exception:
             cfg = {}
 
-        self.p_gain = cfg.get("p_gain", 0.14)
-        self.d_gain = cfg.get("d_gain", 0.05)
+        self.p_gain = cfg.get("p_gain", 0.20)
+        self.d_gain = cfg.get("d_gain", 0.11)
         self.max_steer = cfg.get("max_steer", 0.22)
-        self.base_speed = cfg.get("base_speed", 0.12)
-        self.curve_speed = cfg.get("curve_speed", 0.10)
+        self.base_speed = cfg.get("base_speed", 0.30)
+        self.curve_speed = cfg.get("curve_speed", 0.1)
         self.curve_threshold = cfg.get("curve_threshold", 350)
         self.steering_threshold = cfg.get("steering_threshold", 0.2)
         self.curve_boost = cfg.get("curve_boost", 1.0)
         self.detection_threshold = cfg.get("detection_threshold", 80)
+        
+# base_speed: 0.30
+# curve_boost: 1.0
+# curve_speed: 0.1
+# curve_threshold: 350
+# d_gain: 0.11   #heading gain
+# detection_threshold: 80
+# max_steer: 0.22
+# p_gain: 0.20    #lateral gain  franky - 0.18, 0.24 gladius (needs diff right checkpath frames)
+# steering_threshold: 0.2
+
 
         self.frame_count = 0
 

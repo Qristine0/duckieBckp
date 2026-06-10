@@ -33,8 +33,10 @@ def resolve_tag(raw_id: int) -> Optional[TagID]:
 
 _TAG_TURNS: Dict[TagID, List[str]] = {
     # TagID.TURN_LEFT_RIGHT: ["left", "right"],
-    TagID.TURN_LEFT_RIGHT: ["right"],
-    TagID.TURN_LEFT_FWD: ["left", "forward"],
+    # TagID.TURN_LEFT_RIGHT: ["right"],
+    TagID.TURN_LEFT_RIGHT: ["forward"],
+    # TagID.TURN_LEFT_FWD: ["left", "forward"],
+    TagID.TURN_LEFT_FWD: ["left"],
     TagID.TURN_RIGHT_FWD: ["right"],
     # TagID.TURN_RIGHT_FWD: ["right", "forward"],
 }
@@ -63,14 +65,14 @@ class SignBehaviorConfig:
         # Red-line detection
         self.red_strip_frac: float = kwargs.pop("red_strip_frac", 0.32)
 
-        self.red_roi_left: float = kwargs.pop("red_roi_left", 0.24)
-        self.red_roi_right: float = kwargs.pop("red_roi_right", 0.76)
+        self.red_roi_left: float = kwargs.pop("red_roi_left", 0.12)
+        self.red_roi_right: float = kwargs.pop("red_roi_right", 0.9)
 
         # Bigger = stop later / closer to red line.
-        self.red_line_close_y2_ratio: float = kwargs.pop("red_line_close_y2_ratio", 0.62)
+        self.red_line_close_y2_ratio: float = kwargs.pop("red_line_close_y2_ratio", 0.3)
 
-        self.red_pixel_frac: float = kwargs.pop("red_pixel_frac", 0.018)
-        self.red_min_area: float = kwargs.pop("red_min_area", 65.0)
+        self.red_pixel_frac: float = kwargs.pop("red_pixel_frac", 0.012)
+        self.red_min_area: float = kwargs.pop("red_min_area", 60.0)
         self.red_min_width_frac: float = kwargs.pop("red_min_width_frac", 0.12)
 
         self.red_hsv_low1: Tuple[int, int, int] = kwargs.pop("red_hsv_low1", (0, 100, 70))
@@ -93,13 +95,13 @@ class SignBehaviorConfig:
         self.approach_ramp_factor: float = kwargs.pop("approach_ramp_factor", 0.985)
 
         # Full stop behavior
-        self.stop_hold_frames: int = kwargs.pop("stop_hold_frames", 5)
-        self.slow_ramp_factor: float = kwargs.pop("slow_ramp_factor", 0.82)
+        self.stop_hold_frames: int = kwargs.pop("stop_hold_frames", 10)
+        self.slow_ramp_factor: float = kwargs.pop("slow_ramp_factor", 0.8)
         self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.055)
 
         # CHECKPATH sweep
-        self.check_left_frames: int = kwargs.pop("check_left_frames", 6)   
-        self.check_right_frames: int = kwargs.pop("check_right_frames", 6)
+        self.check_left_frames: int = kwargs.pop("check_left_frames", 12)   
+        self.check_right_frames: int = kwargs.pop("check_right_frames", 8)
         self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.17)
         self.check_settle_frames: int = kwargs.pop("check_settle_frames", 15)
 
@@ -109,25 +111,25 @@ class SignBehaviorConfig:
 
         # Pre-turn forward creep
         self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 10)
-        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 4)
-        self.preturn_speed: float = kwargs.pop("preturn_speed", 0.30)
+        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 9)
+        self.preturn_speed: float = kwargs.pop("preturn_speed", 0.42)
 
         # Intersection manoeuvres
-        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 15)
+        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 30)
         self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 20)
         self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 15)
 
         self.intersect_forward_speed: Tuple[float, float] = kwargs.pop(
             "intersect_forward_speed",
-            (0.4, 0.4),
+            (0.37, 0.4),
         )
         self.intersect_left_speed: Tuple[float, float] = kwargs.pop(
             "intersect_left_speed",
-            (0.19, 0.37),
+            (0.1, 0.5),
         )
         self.intersect_right_speed: Tuple[float, float] = kwargs.pop(
             "intersect_right_speed",
-            (0.40, 0.06),
+            (0.60, 0.05),
         )
 
         # Exiting after intersection

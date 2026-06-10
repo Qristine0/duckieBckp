@@ -228,13 +228,13 @@ class SignBehaviorFSM:
 
             # Sign detected but red line not close yet: slow approach.
             if self._saved_tag is not None:
-                target_factor = self.cfg.approach_speed_factor
-                ramp_factor = self.cfg.approach_ramp_factor
+                # target_factor = self.cfg.approach_speed_factor
+                # ramp_factor = self.cfg.approach_ramp_factor
 
-                self._slow_factor = max(target_factor, self._slow_factor * ramp_factor)
+                # self._slow_factor = max(target_factor, self._slow_factor * ramp_factor)
 
-                return base_left * self._slow_factor, base_right * self._slow_factor
-                # return base_left, base_right
+                # return base_left * self._slow_factor, base_right * self._slow_factor
+                return base_left, base_right
 
             self._slow_factor = 1.0
             return base_left, base_right
@@ -261,7 +261,7 @@ class SignBehaviorFSM:
         if self.state == State.STOPPED:
             self._hold_counter += 1
 
-            if self._hold_counter < self.cfg.slow_ramp_factor:
+            if self._hold_counter < self.cfg.stop_hold_frames:
                 return 0.0, 0.0
 
             self._check_counter = 0
@@ -316,7 +316,7 @@ class SignBehaviorFSM:
 
         phase_a_end = cl
         phase_a_settle = cl + cs
-        phase_b_end = phase_a_settle + 2 * cr
+        phase_b_end = phase_a_settle + cl + cr
         phase_b_settle = phase_b_end + cs
         phase_c_end = phase_b_settle + cl
 

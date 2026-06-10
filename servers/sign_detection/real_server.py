@@ -215,8 +215,11 @@ def main():
     def _init_agents():
         global lane_agent
         sign_config = SignBehaviorConfig()
-        lane_agent = LaneServoingAgent(sign_config)
+        lane_agent = LaneServoingAgent(sign_config=sign_config)
+        
         print(f'[Init] Lane agent ready (speed={lane_agent.base_speed})')
+        print(f"  p_gain={lane_agent.p_gain}, d_gain={lane_agent.d_gain}, base_speed={lane_agent.base_speed}")
+
 
     threading.Thread(target=_init_wheels, daemon=True).start()
     threading.Thread(target=_init_camera, daemon=True).start()
