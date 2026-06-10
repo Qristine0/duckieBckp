@@ -111,13 +111,13 @@ class SignBehaviorConfig:
 
         # Pre-turn forward creep
         self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 10)
-        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 9)
+        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 15)
         self.preturn_speed: float = kwargs.pop("preturn_speed", 0.42)
 
         # Intersection manoeuvres
         self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 30)
         self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 20)
-        self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 15)
+        self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 12)
 
         self.intersect_forward_speed: Tuple[float, float] = kwargs.pop(
             "intersect_forward_speed",

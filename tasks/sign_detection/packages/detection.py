@@ -5,6 +5,17 @@ from typing import List, Tuple, Optional
 from tasks.sign_detection.packages.sign_behavior_config import State
 
 
+# todo - at intersection not many signs are seen. area will be enough 
+# todo - when moving between lines - magram 
+
+# todo - ubralod area sakmarsia swor gzaze
+# intersection-ze marto logika ro mqondes eg gonia kvati da cherdeba
+# lanes shoris logika imushaves yvelgan intersections garda (marto erti lane aris mand visible)
+# magram samagierod false positives are eqneba
+
+
+# todo lessen number of frames stopped for duck
+
 # =========================================================
 # GLOBAL CONFIG
 # =========================================================
@@ -201,6 +212,9 @@ def _duck_close_enough(bbox: Tuple[int, int, int, int], score: float) -> bool:
 
     if area < IMG_WIDTH * IMG_HEIGHT * 0.00045:
         return False
+    
+    if area < 10000:
+        return False
 
     # Main distance rule.
     return y2 >= IMG_HEIGHT * DUCK_STOP_Y2_RATIO
@@ -264,8 +278,6 @@ def detect_obstacles(frame_rgb: np.ndarray) -> List[Detection]:
         detections.append(((x1, y1, x2, y2), min(1.0, area / 5000.0), 1))
 
     return detections
-
-
 
 
 
@@ -344,19 +356,19 @@ def should_stop(
         # TRUCK STOP
         # -----------------------------
         # Kept from your working uncommented version.
-        # if cls_id == 1:
-        #     if area < 50000:
-        #         continue
-        #     if height < 15:
-        #         continue
-        #     if cy < IMG_HEIGHT * 0.25:
-        #         continue
-        #     if cx < 0.08 * IMG_WIDTH or cx > 0.92 * IMG_WIDTH:
-        #         continue
+        if cls_id == 1:
+            if area < 50000:
+                continue
+            if height < 15:
+                continue
+            if cy < IMG_HEIGHT * 0.25:
+                continue
+            if cx < 0.08 * IMG_WIDTH or cx > 0.92 * IMG_WIDTH:
+                continue
 
-        #     truck_threat = True
-        #     reason = f"truck too close area={area:.0f} h={height:.0f}"
-        #     print(f"[ObstacleStop] TRUCK STOP (area={area:.0f}, h={height:.0f})")
+            truck_threat = True
+            reason = f"truck too close area={area:.0f} h={height:.0f}"
+            print(f"[ObstacleStop] TRUCK STOP (area={area:.0f}, h={height:.0f})")
 
     if duck_threat:
         _duck_counter += 1

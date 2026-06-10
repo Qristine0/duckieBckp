@@ -91,6 +91,7 @@ def visualize(frame_bgr):
             _last_pwm_left = float(pwm_left)
             _last_pwm_right = float(pwm_right)
             _last_sign_state = state
+            
             _draw_lane_debug(frame_rgb)
 
             should_stop_flag, reason = _should_stop(detections, state)
@@ -99,7 +100,7 @@ def visualize(frame_bgr):
             _stop_reason = reason or ""
 
             if running and not should_stop_flag and wheels is not None:
-                wheels.set_wheels_speed(pwm_left, pwm_right)
+                wheels.set_wheels_speed(pwm_left, pwm_right)    
             elif wheels is not None:
                 wheels.set_wheels_speed(0.0, 0.0)
 
@@ -476,24 +477,7 @@ def set_threshold():
     return jsonify({'conf_threshold': 0.5})
 
 
-# @app.route('/status')
-# def status():
-#     with _detection_lock:
-#         dets = list(_last_detections)
-#     return jsonify({
-#         'running': running,
-#         'manual_mode': manual_mode,
-#         'model_loaded': True,
-#         'load_error': 0,
-#         'trt_building': False,
-#         'stopped_by_detection': _stopped_by_det,
-#         'stop_reason': _stop_reason,
-#         'conf_threshold': 0.5,
-#         'detections': [
-#             {'class': CLASS_NAMES.get(c, str(c)), 'score': round(s, 3), 'bbox': list(b)}
-#             for b, s, c in dets
-#         ],
-#     })
+
 
 
 def main():

@@ -20,7 +20,7 @@ _SLICE_TOL = 6
 _SLICE_Y_RATIOS = [0.56, 0.64, 0.72, 0.80, 0.88]
 
 
-def _strip_center_x(mask: np.ndarray, y: int, prefer_right: bool = False):
+def _strip_center_x(mask: np.ndarray, y: int, white_x = None, prefer_right: bool = False, ):
     h, w = mask.shape[:2]
 
     y1 = max(0, y - _SLICE_TOL)
@@ -91,9 +91,35 @@ def _strip_center_x(mask: np.ndarray, y: int, prefer_right: bool = False):
     # Choose strongest yellow cluster.
     # Then use its RIGHT edge, because the lane is right of the yellow line.
     # best = max(valid_clusters, key=lambda c: len(c))
-    # todo won't work for duckies
-    best = max(valid_clusters, key=lambda c: np.median(c))
+    
+    # Previous version -  won't work for duckies
+    # best = max(valid_clusters, key=lambda c: np.median(c))
 
+    # right_edge = int(best[-1])
+    # return right_edge - 10
+
+    # ducks shouldn't make a difference
+    candidates = valid_clusters
+
+    if white_x is not None:
+        DIST_THRESH = 200  # todo tune
+
+        filtered = [
+            c for c in candidates
+            if abs(np.median(c) - white_x) > DIST_THRESH
+        ]
+
+        if len(filtered) > 0:
+            candidates = filtered
+
+    best = max(candidates, key=lambda c: np.median(c))
+
+    
+    if white_x is not None:
+        dist = abs(np.median(best) - white_x)
+        print(f"yellow-white distance = {dist:.1f}px")
+        
+        
     right_edge = int(best[-1])
     return right_edge - 10
 
@@ -109,8 +135,8 @@ def detect_lines_in_slices(
     for ratio in _SLICE_Y_RATIOS:
         y = int(h * ratio)
 
-        yellow_x = _strip_center_x(mask_yellow, y, prefer_right=False)
         white_x = _strip_center_x(mask_white, y, prefer_right=True)
+        yellow_x = _strip_center_x(mask_yellow, y, white_x, prefer_right=False)
 
         if yellow_x is not None:
             yellow_xs.append(yellow_x)
