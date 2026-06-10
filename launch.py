@@ -340,6 +340,8 @@ def package_task(task_name):
     # task_models_dir = os.path.join(PROJECT_ROOT, 'tasks', task_name, 'models')
 
     buf = io.BytesIO()
+
+    
     with tarfile.open(fileobj=buf, mode='w:gz') as tar:
         print(f"   Adding packages: tasks/{task_name}/packages/")
         tar.add(task_packages_dir, arcname=f'tasks/{task_name}/packages', filter=no_pycache)
@@ -350,6 +352,18 @@ def package_task(task_name):
         if os.path.exists(config_dir):
             print(f"   Adding configs: config/")
             tar.add(config_dir, arcname='config', filter=no_pycache)
+            
+            
+        templates_dir = os.path.join(PROJECT_ROOT, 'servers', 'templates')
+        if os.path.exists(templates_dir):
+            print(f"   Adding templates: servers/templates/")
+            tar.add(templates_dir, arcname='servers/templates', filter=no_pycache)
+
+        server_common = os.path.join(PROJECT_ROOT, 'servers', 'common.py')
+        if os.path.exists(server_common):
+            print(f"   Adding server common: servers/common.py")
+            tar.add(server_common, arcname='servers/common.py', filter=no_pycache)
+            
         # if os.path.exists(task_models_dir):
         #     print(f"   Adding models: tasks/{task_name}/models/")
         #     tar.add(task_models_dir, arcname=f'tasks/{task_name}/models', filter=no_pycache)
