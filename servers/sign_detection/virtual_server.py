@@ -72,7 +72,9 @@ def visualize(frame_rgb):
     else:
         pwm_left, pwm_right, state = lane_agent.compute_commands(frame_rgb, detections)
 
-        should_stop_flag, reason = _should_stop(detections, state)
+        should_stop_flag, reason = _should_stop(detections, state, lane_agent._white_lane)
+        
+        
         _stopped_by_det = should_stop_flag
         _stop_reason    = reason
 
@@ -119,8 +121,8 @@ def manual_control_loop():
         time.sleep(0.05)
 
 
-def _should_stop(detections, state):
-    return student_should_stop(detections, state)
+def _should_stop(detections, state, white_lane):
+    return student_should_stop(detections, state, white_lane)
 
 
 generate_frames = make_frame_generator(lambda: camera, visualize, quality=50)

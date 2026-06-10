@@ -94,7 +94,7 @@ def visualize(frame_bgr):
             
             _draw_lane_debug(frame_rgb)
 
-            should_stop_flag, reason = _should_stop(detections, state)
+            should_stop_flag, reason = _should_stop(detections, state,lane_agent._white_lane)
 
             _stopped_by_det = bool(should_stop_flag)
             _stop_reason = reason or ""
@@ -416,8 +416,8 @@ def manual_control_loop():
         time.sleep(0.05)
 
 
-def _should_stop(detections, state):
-    return student_should_stop(detections, state)
+def _should_stop(detections, state, white_lane):
+    return student_should_stop(detections, state, white_lane)
 
 
 

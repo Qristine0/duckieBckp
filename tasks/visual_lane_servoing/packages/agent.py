@@ -137,6 +137,7 @@ def detect_lines_in_slices(
 
         white_x = _strip_center_x(mask_white, y, prefer_right=True)
         yellow_x = _strip_center_x(mask_yellow, y, white_x, prefer_right=False)
+        
 
         if yellow_x is not None:
             yellow_xs.append(yellow_x)
@@ -167,6 +168,8 @@ class LaneServoingAgent:
         self.steering_threshold = cfg.get("steering_threshold", 0.2)
         self.curve_boost = cfg.get("curve_boost", 1.0)
         self.detection_threshold = cfg.get("detection_threshold", 80)
+        
+        self._white_lane = []
         
 # base_speed: 0.30
 # curve_boost: 1.0
@@ -315,6 +318,13 @@ class LaneServoingAgent:
 
         yellow_xs, white_xs = detect_lines_in_slices(mask_y, mask_w, h)
 
+        if len(yellow_xs) > 0 and len(white_xs) > 0:
+            self._white_lane = white_xs
+        else:
+            self._white_lane = []
+            
+            
+        
         left_det = len(yellow_xs) > 0
         right_det = len(white_xs) > 0
 

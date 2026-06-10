@@ -49,7 +49,7 @@ DUCK_STOP_Y2_RATIO = 0.70
 
 DUCK_CONFIRM_FRAMES = 2
 TRUCK_CONFIRM_FRAMES = 1
-STOP_LATCH_FRAMES = 8
+STOP_LATCH_FRAMES = 5
 
 _duck_counter = 0
 _truck_counter = 0
@@ -184,7 +184,12 @@ def _is_duck_candidate(candidate: dict, frame_w: int, frame_h: int) -> bool:
     return True
 
 
-def _duck_close_enough(bbox: Tuple[int, int, int, int], score: float) -> bool:
+def _duck_close_enough(
+    bbox: Tuple[int, int, int, int],
+    score: float,
+    state,
+    white_x: float | None = None,
+) -> bool:
     x1, y1, x2, y2 = bbox
 
     box_w = x2 - x1
@@ -196,11 +201,9 @@ def _duck_close_enough(bbox: Tuple[int, int, int, int], score: float) -> bool:
     if score < 0.20:
         return False
 
-    # Only stop if duck is in a reasonable front area.
     if cx < IMG_WIDTH * 0.16 or cx > IMG_WIDTH * 0.84:
         return False
 
-    # Re-check line rejection.
     if aspect > 2.25:
         return False
 
@@ -212,11 +215,36 @@ def _duck_close_enough(bbox: Tuple[int, int, int, int], score: float) -> bool:
 
     if area < IMG_WIDTH * IMG_HEIGHT * 0.00045:
         return False
-    
-    if area < 10000:
-        return False
 
-    # Main distance rule.
+    # -----------------------------
+    # Intersection:
+    # area-only rule
+    # -----------------------------
+    if state != State.MOVING:
+        print("INTERSECTIONNNNNNNNNNNNNNNNNN")
+        if area < 10000:
+            return False
+
+    # -----------------------------
+    # Normal driving:
+    # use white-lane distance
+    # -----------------------------
+    else:
+        if area < 3000:
+            return False
+
+        if white_x is not None:
+            white_x = float(np.median(white_x))
+            dist = abs(cx - white_x)
+
+            print(
+                f"duck-white distance={dist:.1f}px "
+                f"area={area}"
+            )
+
+            if dist > 250:
+                return False
+
     return y2 >= IMG_HEIGHT * DUCK_STOP_Y2_RATIO
 
 
@@ -312,6 +340,7 @@ def vehicle_detected(detections):
 def should_stop(
     detections: List[Detection],
     state: Optional[State] = None,
+    white_x = []
 ) -> Tuple[bool, str]:
     """
     Stops for:
@@ -346,11 +375,11 @@ def should_stop(
         # -----------------------------
         # DUCK STOP
         # -----------------------------
-        # if cls_id == 0:
-        #     if _duck_close_enough(bbox, score):
-        #         duck_threat = True
-        #         reason = f"duckie close enough score={score:.2f} bbox={bbox}"
-        #         print(f"[ObstacleStop] DUCKIE candidate close (area={area:.0f})")
+        if cls_id == 0:
+            if _duck_close_enough(bbox, score, state, white_x):
+                duck_threat = True
+                reason = f"duckie close enough score={score:.2f} bbox={bbox}"
+                print(f"[ObstacleStop] DUCKIE candidate close (area={area:.0f})")
 
         # -----------------------------
         # TRUCK STOP

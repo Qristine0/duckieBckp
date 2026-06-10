@@ -1,8 +1,6 @@
 import random
 from typing import Dict, List, Optional
 
-import numpy as np
-
 from tasks.sign_detection.packages.red_line_detection import detect_red_line
 from tasks.sign_detection.packages.april_tag import detect_tags, confirm_tags
 from tasks.sign_detection.packages.detection import vehicle_detected
@@ -123,7 +121,7 @@ class SignBehaviorFSM:
             "check_counter": int(self._check_counter),
             "turn_counter": int(self._turn_counter),
         }
-
+        # 
         return left, right, self.state
 
     @property
