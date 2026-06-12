@@ -100,7 +100,17 @@ def _strip_center_x(mask: np.ndarray, y: int, white_x = None, prefer_right: bool
 
     # ducks shouldn't make a difference
     candidates = valid_clusters
+    
+    
+    # don't take yellow to right of white
+    # if white_x is not None:
+    #     filtered = [c for c in candidates if c[-1] < white_x]
 
+    #     if filtered:
+    #         candidates = filtered
+        
+    
+        
     if white_x is not None:
         DIST_THRESH = 200  # todo tune
 
@@ -112,6 +122,8 @@ def _strip_center_x(mask: np.ndarray, y: int, white_x = None, prefer_right: bool
         if len(filtered) > 0:
             candidates = filtered
 
+    # todo yviteli borbali
+    # tetrze marjvniv ar iyos
     best = max(candidates, key=lambda c: np.median(c))
 
     
@@ -121,7 +133,7 @@ def _strip_center_x(mask: np.ndarray, y: int, white_x = None, prefer_right: bool
         
         
     right_edge = int(best[-1])
-    return right_edge - 10
+    return right_edge 
 
 
 def detect_lines_in_slices(

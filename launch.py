@@ -337,14 +337,13 @@ def package_task(task_name):
             return None
         return tarinfo
 
-    # task_models_dir = os.path.join(PROJECT_ROOT, 'tasks', task_name, 'models')
 
     buf = io.BytesIO()
-
-    
     with tarfile.open(fileobj=buf, mode='w:gz') as tar:
         print(f"   Adding packages: tasks/{task_name}/packages/")
         tar.add(task_packages_dir, arcname=f'tasks/{task_name}/packages', filter=no_pycache)
+        
+        
         servers_dir = os.path.join(PROJECT_ROOT, 'servers', task_name)
         if os.path.exists(servers_dir):
             print(f"   Adding servers: servers/")
@@ -364,6 +363,7 @@ def package_task(task_name):
             print(f"   Adding server common: servers/common.py")
             tar.add(server_common, arcname='servers/common.py', filter=no_pycache)
             
+        # task_models_dir = os.path.join(PROJECT_ROOT, 'tasks', task_name, 'models')
         # if os.path.exists(task_models_dir):
         #     print(f"   Adding models: tasks/{task_name}/models/")
         #     tar.add(task_models_dir, arcname=f'tasks/{task_name}/models', filter=no_pycache)

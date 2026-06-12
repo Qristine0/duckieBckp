@@ -88,44 +88,44 @@ class SignBehaviorConfig:
         )
 
         # After finishing sign behavior, ignore the same red line for a while.
-        self.red_ignore_after_frames: int = kwargs.pop("red_ignore_after_frames", 35)
+        self.red_ignore_after_frames: int = kwargs.pop("red_ignore_after_frames", 100)
 
         # Slow approach after seeing a sign but before red line.
         self.approach_speed_factor: float = kwargs.pop("approach_speed_factor", 0.75)
         self.approach_ramp_factor: float = kwargs.pop("approach_ramp_factor", 0.985)
 
         # Full stop behavior
-        self.stop_hold_frames: int = kwargs.pop("stop_hold_frames", 10)
+        self.stop_hold_frames: int = kwargs.pop("stop_hold_frames", 50)
         self.slow_ramp_factor: float = kwargs.pop("slow_ramp_factor", 0.8)
         self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.055)
 
         # CHECKPATH sweep
-        self.check_left_frames: int = kwargs.pop("check_left_frames", 12)   
-        self.check_right_frames: int = kwargs.pop("check_right_frames", 8)
+        self.check_left_frames: int = kwargs.pop("check_left_frames", 25)   
+        self.check_right_frames: int = kwargs.pop("check_right_frames", 25)
         self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.17)
-        self.check_settle_frames: int = kwargs.pop("check_settle_frames", 15)
+        self.check_settle_frames: int = kwargs.pop("check_settle_frames", 30)
 
         # POST_STOP
         self.post_stop_frames: int = kwargs.pop("post_stop_frames", 24)
         self.post_stop_speed: float = kwargs.pop("post_stop_speed", 0.4)
 
         # Pre-turn forward creep
-        self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 10)
-        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 15)
-        self.preturn_speed: float = kwargs.pop("preturn_speed", 0.42)
+        self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 20)
+        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 18)
+        self.preturn_speed: float = kwargs.pop("preturn_speed", 0.4)
 
         # Intersection manoeuvres
-        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 30)
-        self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 20)
-        self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 12)
+        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 40)
+        self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 40)
+        self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 25)
 
         self.intersect_forward_speed: Tuple[float, float] = kwargs.pop(
             "intersect_forward_speed",
-            (0.37, 0.4),
+            (0.4, 0.42),
         )
         self.intersect_left_speed: Tuple[float, float] = kwargs.pop(
             "intersect_left_speed",
-            (0.1, 0.5),
+            (0.2, 0.5),
         )
         self.intersect_right_speed: Tuple[float, float] = kwargs.pop(
             "intersect_right_speed",

@@ -188,7 +188,7 @@ def _duck_close_enough(
     bbox: Tuple[int, int, int, int],
     score: float,
     state,
-    white_x: float | None = None,
+    white_x = [],
 ) -> bool:
     x1, y1, x2, y2 = bbox
 
@@ -375,11 +375,11 @@ def should_stop(
         # -----------------------------
         # DUCK STOP
         # -----------------------------
-        if cls_id == 0:
-            if _duck_close_enough(bbox, score, state, white_x):
-                duck_threat = True
-                reason = f"duckie close enough score={score:.2f} bbox={bbox}"
-                print(f"[ObstacleStop] DUCKIE candidate close (area={area:.0f})")
+        # if cls_id == 0:
+        #     if _duck_close_enough(bbox, score, state, white_x):
+        #         duck_threat = True
+        #         reason = f"duckie close enough score={score:.2f} bbox={bbox}"
+        #         print(f"[ObstacleStop] DUCKIE candidate close (area={area:.0f})")
 
         # -----------------------------
         # TRUCK STOP
