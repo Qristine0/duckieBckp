@@ -222,6 +222,7 @@ def _duck_close_enough(
     # -----------------------------
     if state != State.MOVING:
         print("INTERSECTIONNNNNNNNNNNNNNNNNN")
+        print(area)
         if area < 10000:
             return False
 
@@ -375,11 +376,11 @@ def should_stop(
         # -----------------------------
         # DUCK STOP
         # -----------------------------
-        # if cls_id == 0:
-        #     if _duck_close_enough(bbox, score, state, white_x):
-        #         duck_threat = True
-        #         reason = f"duckie close enough score={score:.2f} bbox={bbox}"
-        #         print(f"[ObstacleStop] DUCKIE candidate close (area={area:.0f})")
+        if cls_id == 0:
+            if _duck_close_enough(bbox, score, state, white_x):
+                duck_threat = True
+                reason = f"duckie close enough score={score:.2f} bbox={bbox}"
+                print(f"[ObstacleStop] DUCKIE candidate close (area={area:.0f})")
 
         # -----------------------------
         # TRUCK STOP

@@ -327,13 +327,10 @@ class LaneServoingAgent:
         }
 
         h, w = mask_y.shape
-
+        
         yellow_xs, white_xs = detect_lines_in_slices(mask_y, mask_w, h)
 
-        if len(yellow_xs) > 0 and len(white_xs) > 0:
-            self._white_lane = white_xs
-        else:
-            self._white_lane = []
+      
             
             
         
@@ -369,8 +366,16 @@ class LaneServoingAgent:
                 f"err={self._filtered_error:.3f}, steer={steering:.3f}, "
                 f"left={left:.3f}, right={right:.3f}, lane={not recovery}"
             )
+            
+            
+        if len(yellow_xs) > 0 and len(white_xs) > 0 and not is_curve:
+            self._white_lane = white_xs
+        else:
+            self._white_lane = []
 
         return left, right
+    
+    
 
     def step(self, image: np.ndarray, wheels_driver) -> Tuple[float, float]:
         left, right = self.compute_commands(image)

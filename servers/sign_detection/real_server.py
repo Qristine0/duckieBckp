@@ -14,6 +14,8 @@ from flask import Flask, Response, render_template_string, jsonify, request
 
 from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWithSigns as LaneServoingAgent
 from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
+from servers.object_detection.visualization import draw_detections, draw_status_overlay
+
 
 from tasks.sign_detection.packages.detection import detect_obstacles, CLASS_NAMES
 from tasks.sign_detection.packages.detection import should_stop as student_should_stop
@@ -60,6 +62,9 @@ def visualize(frame_bgr):
 
     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
+    if wheels is None:
+        return draw_status_overlay(frame_bgr, 'Initializing...')
+    
     try:
         result = detect_obstacles(frame_rgb)
         if result is not None:
@@ -103,6 +108,9 @@ def visualize(frame_bgr):
                 wheels.set_wheels_speed(pwm_left, pwm_right)    
             elif wheels is not None:
                 wheels.set_wheels_speed(0.0, 0.0)
+                
+            if detections:
+                draw_detections(frame_bgr, detections)
 
         except Exception as e:
             _last_status_error = f"lane_agent error: {e}"
