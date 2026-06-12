@@ -8,29 +8,17 @@ import socket
 # ! compute_commands needs to unpack one more value,delete  draw tags
 
 
-
 script_dir   = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.join(script_dir, '..', '..')
 sys.path.insert(0, project_root)
 
-import cv2
+import cv2 as _cv2
 from flask import Flask, Response, render_template_string, jsonify, request
 
 
 from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWithSigns as LaneServoingAgent
 from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
 
-
-# (the rest of the file sees the same name, so nothing else needs changing there)
- 
- 
-# ════════════════════════════════════════════════════════════════════════════
-# 2.  visualize()  — pass detections into lane_agent.compute_commands()
-# ════════════════════════════════════════════════════════════════════════════
- 
-
- 
-import cv2 as _cv2
  
  
 def visualize(frame_rgb):      
@@ -83,8 +71,6 @@ def visualize(frame_rgb):
 from tasks.object_detection.packages.agent import ObjectDetectionAgent, CLASS_NAMES
 from tasks.object_detection.packages.stop_activity import should_stop as student_should_stop
 
-from servers.object_detection.visualization import draw_detections
-# from servers.templates.object_detection import OBJECT_DETECTION_TEMPLATE as HTML_TEMPLATE
 from servers.templates.sign_detection import SIGN_DETECTION_TEMPLATE as HTML_TEMPLATE
 
 from duckiebot.camera_driver.godot_camera_driver import GodotCameraDriver, GodotCameraConfig
@@ -312,12 +298,7 @@ def main():
     print('\n[1/4] Creating lane agent...')
     
     lane_agent = LaneServoingAgent(
-        sign_config=SignBehaviorConfig(
-            # stop_hold_frames   = 8,
-            # slow_ramp_factor   = 0.82,
-            # tag_confirm_frames = 1,
-            # min_margin         = 10.0,
-        )
+        sign_config=SignBehaviorConfig()
     )
 
     print(f'  p_gain={lane_agent.p_gain}, d_gain={lane_agent.d_gain}, speed={lane_agent.base_speed}')

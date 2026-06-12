@@ -3,6 +3,7 @@ import os
 import signal
 import threading
 import time
+import queue
 import socket
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -18,7 +19,13 @@ from servers.object_detection.visualization import draw_detections, draw_status_
 
 
 from tasks.sign_detection.packages.detection import detect_obstacles, CLASS_NAMES
-from tasks.sign_detection.packages.detection import should_stop as student_should_stop
+# from tasks.sign_detection.packages.detection import should_stop as student_should_stop
+
+from tasks.object_detection.packages.agent import ObjectDetectionAgent
+from tasks.object_detection.packages.stop_activity import should_stop as should_stop_obj_detection
+
+
+
 
 from servers.templates.sign_detection import SIGN_DETECTION_TEMPLATE as HTML_TEMPLATE
 
@@ -30,16 +37,18 @@ from servers.common import make_frame_generator, shutdown_cleanup, suppress_http
 
 app = Flask(__name__)
 lane_agent = None
+det_agent  = None
 camera = None
 wheels = None
 running = False
 manual_mode = False
 stop_event = threading.Event()
 
+_frame_queue     = queue.Queue(maxsize=1)
 _last_detections = []
-_detection_lock = threading.Lock()
-_stopped_by_det = False
-_stop_reason = ''
+_detection_lock  = threading.Lock()
+_stopped_by_det  = False
+_stop_reason     = ''
 
 keys_pressed = {'up': False, 'down': False, 'left': False, 'right': False}
 _keys_lock = threading.Lock()
@@ -51,6 +60,7 @@ _last_pwm_right = 0.0
 _last_sign_state = None
 _last_frame_time = 0.0
 _last_status_error = ""
+
 
 
 def visualize(frame_bgr):
@@ -99,18 +109,27 @@ def visualize(frame_bgr):
             
             _draw_lane_debug(frame_rgb)
 
-            should_stop_flag, reason = _should_stop(detections, state,lane_agent._white_lane)
+            # should_stop_flag, reason = _should_stop(detections, state,lane_agent._white_lane)
+            should_stop, reason = _should_stop(detections, det_agent.img_size if det_agent else frame_bgr.shape[0], state)
+             
+            # _stopped_by_det = bool(should_stop_flag)
+            # _stop_reason = reason or ""
 
-            _stopped_by_det = bool(should_stop_flag)
-            _stop_reason = reason or ""
-
-            if running and not should_stop_flag and wheels is not None:
+            if running and not should_stop and wheels is not None:
                 wheels.set_wheels_speed(pwm_left, pwm_right)    
             elif wheels is not None:
                 wheels.set_wheels_speed(0.0, 0.0)
                 
-            if detections:
-                draw_detections(frame_bgr, detections)
+            # if detections:
+            #     draw_detections(frame_bgr, detections)
+            
+            if det_agent is not None and det_agent.model_loaded and detections:
+                oh, ow = frame_bgr.shape[:2]
+                sx = ow / det_agent.img_size
+                sy = oh / det_agent.img_size
+                scaled = [((int(x1*sx), int(y1*sy), int(x2*sx), int(y2*sy)), s, c)
+                        for (x1, y1, x2, y2), s, c in detections]
+                draw_detections(frame_bgr, scaled)
 
         except Exception as e:
             _last_status_error = f"lane_agent error: {e}"
@@ -358,11 +377,23 @@ def status():
         "agent_ready": lane_agent is not None,
 
         # Detection/model status
-        "model_loaded": True,
-        "load_error": None,
-        "trt_building": False,
-        "conf_threshold": 0.5,
-
+        # "model_loaded": True,
+        # "load_error": None,
+        # "trt_building": False,
+        # "conf_threshold": 0.5,
+        'model_loaded':         det_agent.model_loaded if det_agent else False,
+        'load_error':           det_agent.load_error if det_agent else None,
+        'trt_building':         getattr(det_agent, 'trt_building', False) if det_agent else False,
+        'stopped_by_detection': _stopped_by_det,
+        'stop_reason':          _stop_reason,
+        'conf_threshold': det_agent.conf_threshold if det_agent else 0.5,
+        'detections': [
+            {'class': CLASS_NAMES.get(c, str(c)), 'score': round(s, 3), 'bbox': list(b)}
+            for b, s, c in dets
+        ],
+        
+        "detection_count": len(dets),
+        
         # Stop state
         "stopped_by_detection": bool(_stopped_by_det),
         "stop_reason": _stop_reason,
@@ -381,8 +412,8 @@ def status():
         "sign_debug": _json_safe(sign_debug),
 
         # Object detections
-        "detections": _detections_payload(dets),
-        "detection_count": len(dets),
+        # "detections": _detections_payload(dets),
+        # "detection_count": len(dets),
 
         # Manual keys
         "keys_pressed": dict(keys_pressed),
@@ -424,11 +455,14 @@ def manual_control_loop():
         time.sleep(0.05)
 
 
-def _should_stop(detections, state, white_lane):
-    return student_should_stop(detections, state, white_lane)
+# def _should_stop(detections, state, white_lane):
+#     return student_should_stop(detections, state, white_lane)
 
 
-
+def _should_stop(detections, state):
+    if det_agent is None:
+        return False, ''
+    return should_stop_obj_detection(detections, det_agent.img_size, state)
 
 generate_frames = make_frame_generator(lambda: camera, visualize, quality=50, rgb=False)
 
@@ -486,10 +520,24 @@ def set_threshold():
 
 
 
+def detection_loop():
+    global _last_detections
+    while not stop_event.is_set():
+        if det_agent is None or not det_agent.model_loaded:
+            time.sleep(0.1)
+            continue
+        try:
+            frame_rgb = _frame_queue.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        result = det_agent.detect(frame_rgb)
+        if result is not None:
+            with _detection_lock:
+                _last_detections = result
 
 
 def main():
-    global lane_agent, camera, wheels
+    global lane_agent, det_agent, camera, wheels
 
     import argparse
     ap = argparse.ArgumentParser()
@@ -514,17 +562,24 @@ def main():
         print('[Init] Camera ready')
 
     def _init_agents():
-        global lane_agent
+        global lane_agent, det_agent
         sign_config = SignBehaviorConfig()
         lane_agent = LaneServoingAgent(sign_config=sign_config)
         
         print(f'[Init] Lane agent ready (speed={lane_agent.base_speed})')
         print(f"  p_gain={lane_agent.p_gain}, d_gain={lane_agent.d_gain}, base_speed={lane_agent.base_speed}")
+        
+        det_agent = ObjectDetectionAgent()
+        if det_agent.model_loaded:
+            print(f'[Init] Detection model ready ({det_agent.img_size}px)')
+        else:
+            print(f'[Init] Detection model: {det_agent.load_error}')
 
 
     threading.Thread(target=_init_wheels, daemon=True).start()
     threading.Thread(target=_init_camera, daemon=True).start()
     threading.Thread(target=_init_agents, daemon=True).start()
+    threading.Thread(target=detection_loop,    daemon=True).start()
     threading.Thread(target=manual_control_loop, daemon=True).start()
 
     def _shutdown(signum, frame):

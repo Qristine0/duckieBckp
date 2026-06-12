@@ -3,6 +3,8 @@ import os
 import threading
 import time
 import socket
+import queue
+
 
 script_dir   = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.join(script_dir, '..', '..')
@@ -17,7 +19,12 @@ from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWith
 from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
 
 from tasks.sign_detection.packages.detection import detect_obstacles, CLASS_NAMES
-from tasks.sign_detection.packages.detection import should_stop as student_should_stop
+# from tasks.sign_detection.packages.detection import should_stop as student_should_stop
+
+
+from tasks.object_detection.packages.agent import ObjectDetectionAgent
+from tasks.object_detection.packages.stop_activity import should_stop as should_stop_obj_detection
+
 
 from servers.templates.sign_detection import SIGN_DETECTION_TEMPLATE as HTML_TEMPLATE
 
@@ -29,14 +36,16 @@ from launcher.config import GODOT_SCENES
 from servers.common import make_frame_generator, shutdown_cleanup, suppress_http_logs
 
 
-app        = Flask(__name__)
-lane_agent = None
-camera     = None
-wheels     = None
-running    = False
+app         = Flask(__name__)
+lane_agent  = None
+det_agent   = None
+camera      = None
+wheels      = None
+running     = False
 manual_mode = False
-stop_event = threading.Event()
+stop_event  = threading.Event()
 
+_frame_queue     = queue.Queue(maxsize=1)
 _last_detections = []
 _detection_lock  = threading.Lock()
 _stopped_by_det  = False
@@ -57,12 +66,14 @@ def visualize(frame_rgb):
     if wheels is None:
         return bgr
 
-    # Run detection inline on every frame
-    result = detect_obstacles(frame_rgb)
-    if result is not None:
-        with _detection_lock:
-            _last_detections = result
-
+    # Push frame to detection queue
+    if det_agent is not None and det_agent.model_loaded:
+        small = _cv2.resize(frame_rgb, (det_agent.img_size, det_agent.img_size))
+        try:
+            _frame_queue.put_nowait(small)
+        except Exception:
+            pass
+ 
     with _detection_lock:
         detections = list(_last_detections)
 
@@ -72,7 +83,8 @@ def visualize(frame_rgb):
     else:
         pwm_left, pwm_right, state = lane_agent.compute_commands(frame_rgb, detections)
 
-        should_stop_flag, reason = _should_stop(detections, state, lane_agent._white_lane)
+        # should_stop_flag, reason = _should_stop(detections, state, lane_agent._white_lane)
+        should_stop_flag, reason = _should_stop(detections, state)
         
         
         _stopped_by_det = should_stop_flag
@@ -83,6 +95,16 @@ def visualize(frame_rgb):
         else:
             wheels.set_wheels_speed(0.0, 0.0)
 
+
+    if det_agent is not None and det_agent.model_loaded and detections:
+        oh, ow = bgr.shape[:2]
+        sx = ow / det_agent.img_size
+        sy = oh / det_agent.img_size
+        scaled = [((int(x1*sx), int(y1*sy), int(x2*sx), int(y2*sy)), s, c)
+                  for (x1, y1, x2, y2), s, c in detections]
+        from servers.object_detection.visualization import draw_detections
+        draw_detections(bgr, scaled)
+        
     return bgr
 
 
@@ -121,9 +143,13 @@ def manual_control_loop():
         time.sleep(0.05)
 
 
-def _should_stop(detections, state, white_lane):
-    return student_should_stop(detections, state, white_lane)
+# def _should_stop(detections, state, white_lane):
+    # return student_should_stop(detections, state, white_lane)
 
+def _should_stop(detections, state):
+    if det_agent is None:
+        return False, ''
+    return should_stop_obj_detection(detections, det_agent.img_size, state)
 
 generate_frames = make_frame_generator(lambda: camera, visualize, quality=50)
 
@@ -198,6 +224,23 @@ def update_keys():
     _keys_last_update = time.time()
     return jsonify({'status': 'ok'})
 
+def detection_loop():
+    global _last_detections
+    while not stop_event.is_set():
+        if det_agent is None or not det_agent.model_loaded:
+            time.sleep(0.1)
+            continue
+        try:
+            frame_rgb = _frame_queue.get(timeout=0.5)
+        except queue.Empty:
+            continue
+        result = det_agent.detect(frame_rgb)
+        if result is not None:
+            with _detection_lock:
+                print(result)
+                _last_detections = result
+                
+                
 @app.route('/remove_objects', methods=['POST'])
 def remove_objects():
     global _stopped_by_det, _stop_reason, _last_detections
@@ -223,23 +266,34 @@ def status():
         'manual_mode':          manual_mode,
         'current_scene':        _current_scene,
         'game_over':            wheels.is_game_over() if wheels else False,
-        'model_loaded':         True,
-        'load_error':           0,
-        'trt_building':         True,
+        # 'model_loaded':         True,
+        # 'load_error':           0,
+        # 'trt_building':         True,
+        # 'stopped_by_detection': _stopped_by_det,
+        # 'stop_reason':          _stop_reason,
+        # 'conf_threshold':       0.5,
+        # 'detections': [
+        #     {'class': CLASS_NAMES.get(c, str(c)), 'score': round(s, 3), 'bbox': list(b)}
+        #     for b, s, c in dets
+        # ],
+        'model_loaded':         det_agent.model_loaded if det_agent else False,
+        'load_error':           det_agent.load_error if det_agent else None,
+        'trt_building':         getattr(det_agent, 'trt_building', False) if det_agent else False,
         'stopped_by_detection': _stopped_by_det,
         'stop_reason':          _stop_reason,
-        'conf_threshold':       0.5,
+        'conf_threshold':       det_agent.conf_threshold if det_agent else 0.5,
         'detections': [
             {'class': CLASS_NAMES.get(c, str(c)), 'score': round(s, 3), 'bbox': list(b)}
             for b, s, c in dets
         ],
+        
         'sign_state': lane_agent.sign_state if lane_agent else 'N/A',
         'sign_debug': lane_agent.sign_debug if lane_agent else {},
     })
 
 
 def main():
-    global lane_agent, camera, wheels
+    global lane_agent, det_agent, camera, wheels
 
     import argparse
     ap = argparse.ArgumentParser()
@@ -260,6 +314,14 @@ def main():
     )
     print(f'  p_gain={lane_agent.p_gain}, d_gain={lane_agent.d_gain}, speed={lane_agent.base_speed}')
 
+    print('\n[2/4] Loading detection model...')
+    det_agent = ObjectDetectionAgent()
+    if det_agent.model_loaded:
+        print(f'  Model ready: {det_agent.img_size}px')
+    else:
+        print(f'  WARNING: {det_agent.load_error}')
+        
+        
     print('\n[2/3] Initializing wheels...')
     wheels = GodotWheelsDriver(
         WheelPWMConfiguration(pwm_min=0), WheelPWMConfiguration(pwm_min=0),
@@ -270,6 +332,7 @@ def main():
     camera = GodotCameraDriver(godot_config=GodotCameraConfig(host='0.0.0.0', port=args.frame_port))
     camera.start()
 
+    threading.Thread(target=detection_loop,     daemon=True).start()
     threading.Thread(target=manual_control_loop, daemon=True).start()
 
     web_port = find_available_port(args.port)
