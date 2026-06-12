@@ -2,7 +2,6 @@ from typing import List, Tuple
 from tasks.sign_detection.packages.sign_behavior_config import State
 
 
-# todo - push to git, but before check with chat
 # pull working simulation visual lane servoing on another branch
 # test obj detection
 # checkpath will need some different handling (color may be enough)
