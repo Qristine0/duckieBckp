@@ -100,13 +100,13 @@ class SignBehaviorConfig:
         self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.055)
 
         # CHECKPATH sweep
-        self.check_left_frames: int = kwargs.pop("check_left_frames", 25)   
-        self.check_right_frames: int = kwargs.pop("check_right_frames", 25)
-        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.17)
+        self.check_left_frames: int = kwargs.pop("check_left_frames", 20)   
+        self.check_right_frames: int = kwargs.pop("check_right_frames", 10)
+        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.25)
         self.check_settle_frames: int = kwargs.pop("check_settle_frames", 30)
 
         # POST_STOP
-        self.post_stop_frames: int = kwargs.pop("post_stop_frames", 24)
+        self.post_stop_frames: int = kwargs.pop("post_stop_frames", 40)
         self.post_stop_speed: float = kwargs.pop("post_stop_speed", 0.4)
 
         # Pre-turn forward creep
@@ -119,9 +119,10 @@ class SignBehaviorConfig:
         self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 40)
         self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 25)
 
+        # for new bot right needs more speed
         self.intersect_forward_speed: Tuple[float, float] = kwargs.pop(
             "intersect_forward_speed",
-            (0.4, 0.42),
+            (0.4, 0.5),
         )
         self.intersect_left_speed: Tuple[float, float] = kwargs.pop(
             "intersect_left_speed",

@@ -405,9 +405,10 @@ class SignBehaviorFSM:
         print("servoing")
         return base_left, base_right
 
+
     def _checkpath_step(self, detections):
         spd = self._speed("check_turn_speed", 0.04)
-        cl = self._frames("check_left_frames", 4)
+        cl = self._frames("check_left_frames", 10)
         cr = self._frames("check_right_frames", 4)
         cs = self._frames("check_settle_frames", 5)
 
@@ -454,7 +455,7 @@ class SignBehaviorFSM:
             return 0.0, 0.0
 
         # Re-center
-        if c < phase_c_end:
+        if c < phase_c_end + 10:
             return -spd, spd
 
         # Decision
@@ -488,6 +489,7 @@ class SignBehaviorFSM:
 
         print("[SignBehavior] >>> path clear — POST_STOP")
         return 0.0, 0.0
+
 
     def _intersect_step(self, base_left, base_right):
         turn = self._chosen_turn or "forward"

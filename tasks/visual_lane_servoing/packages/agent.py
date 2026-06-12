@@ -129,7 +129,7 @@ def _strip_center_x(mask: np.ndarray, y: int, white_x = None, prefer_right: bool
     
     if white_x is not None:
         dist = abs(np.median(best) - white_x)
-        print(f"yellow-white distance = {dist:.1f}px")
+        # print(f"yellow-white distance = {dist:.1f}px")
         
         
     right_edge = int(best[-1])
