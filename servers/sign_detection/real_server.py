@@ -18,10 +18,7 @@ from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
 from servers.object_detection.visualization import draw_detections, draw_status_overlay
 
 
-from tasks.sign_detection.packages.detection import detect_obstacles, CLASS_NAMES
-# from tasks.sign_detection.packages.detection import should_stop as student_should_stop
-
-from tasks.object_detection.packages.agent import ObjectDetectionAgent
+from tasks.object_detection.packages.agent import ObjectDetectionAgent, CLASS_NAMES
 from tasks.object_detection.packages.stop_activity import should_stop as should_stop_obj_detection
 
 
@@ -71,18 +68,19 @@ def visualize(frame_bgr):
     _last_status_error = ""
 
     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    if det_agent is not None and det_agent.model_loaded:
+        try:
+            small = cv2.resize(
+                frame_rgb,
+                (det_agent.img_size, det_agent.img_size)
+            )
+            _frame_queue.put_nowait(small)
+        except queue.Full:
+            pass
 
     if wheels is None:
         return draw_status_overlay(frame_bgr, 'Initializing...')
-    
-    try:
-        result = detect_obstacles(frame_rgb)
-        if result is not None:
-            with _detection_lock:
-                _last_detections = result
-    except Exception as e:
-        _last_status_error = f"detect_obstacles error: {e}"
-        print(f"[Server] {_last_status_error}")
+
 
     with _detection_lock:
         detections = list(_last_detections)
@@ -107,13 +105,13 @@ def visualize(frame_bgr):
             _last_pwm_right = float(pwm_right)
             _last_sign_state = state
             
-            _draw_lane_debug(frame_rgb)
+            _draw_lane_debug(frame_bgr)
 
             # should_stop_flag, reason = _should_stop(detections, state,lane_agent._white_lane)
-            should_stop, reason = _should_stop(detections, det_agent.img_size if det_agent else frame_bgr.shape[0], state)
+            should_stop, reason = _should_stop(detections, state)
              
-            # _stopped_by_det = bool(should_stop_flag)
-            # _stop_reason = reason or ""
+            _stopped_by_det = bool(should_stop)
+            _stop_reason = reason or ""
 
             if running and not should_stop and wheels is not None:
                 wheels.set_wheels_speed(pwm_left, pwm_right)    
@@ -384,8 +382,8 @@ def status():
         'model_loaded':         det_agent.model_loaded if det_agent else False,
         'load_error':           det_agent.load_error if det_agent else None,
         'trt_building':         getattr(det_agent, 'trt_building', False) if det_agent else False,
-        'stopped_by_detection': _stopped_by_det,
-        'stop_reason':          _stop_reason,
+        # 'stopped_by_detection': _stopped_by_det,
+        # 'stop_reason':          _stop_reason,
         'conf_threshold': det_agent.conf_threshold if det_agent else 0.5,
         'detections': [
             {'class': CLASS_NAMES.get(c, str(c)), 'score': round(s, 3), 'bbox': list(b)}

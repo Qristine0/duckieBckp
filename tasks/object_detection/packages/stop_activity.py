@@ -2,7 +2,6 @@ from typing import List, Tuple
 from tasks.sign_detection.packages.sign_behavior_config import State
 
 
-# todo - push to git, but before check with chat
 # pull working simulation visual lane servoing on another branch
 # test obj detection
 # checkpath will need some different handling (color may be enough)
@@ -17,13 +16,13 @@ _stop_latch = 0
 _DUCK_FRAMES_REQUIRED = 2
 _TRUCK_FRAMES_REQUIRED = 1
 
-_STOP_LATCH_FRAMES = 10
+_STOP_LATCH_FRAMES = 20
 
 # Distance tuning.
 # Bigger value = stops later / closer.
 # Smaller value = stops earlier / farther.
 _DUCK_STOP_Y2_RATIO = 0.70
-_TRUCK_STOP_Y2_RATIO = 0.66
+_TRUCK_STOP_Y2_RATIO = 0.45
 
 
 def _valid_duck_threat(
