@@ -22,7 +22,7 @@ _STOP_LATCH_FRAMES = 20
 # Bigger value = stops later / closer.
 # Smaller value = stops earlier / farther.
 _DUCK_STOP_Y2_RATIO = 0.70
-_TRUCK_STOP_Y2_RATIO = 0.45
+_TRUCK_STOP_Y2_RATIO = 0.70
 
 
 def _valid_duck_threat(
@@ -86,8 +86,17 @@ def _valid_truck_threat(
         return False
 
     # Truck can be slightly sideways, but must still be near our path.
-    if box_cx < img_size * 0.10 or box_cx > img_size * 0.90:
+    # if box_cx < img_size * 0.30 or box_cx > img_size * 0.60:
+    #     return False
+    
+    
+    # instead of center, check its overlap
+    danger_left  = img_size * 0.25
+    danger_right = img_size * 0.65
+
+    if x2 < danger_left or x1 > danger_right:
         return False
+
 
     # Main rule: stop when truck bottom is close enough.
     if y2 >= img_size * _TRUCK_STOP_Y2_RATIO:

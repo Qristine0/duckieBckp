@@ -18,11 +18,11 @@ from tasks.visual_lane_servoing.packages.agent import LaneServoingAgent as l
 from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWithSigns as LaneServoingAgent
 from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
 
-from tasks.sign_detection.packages.detection import detect_obstacles, CLASS_NAMES
+# from tasks.sign_detection.packages.detection import detect_obstacles, CLASS_NAMES
 # from tasks.sign_detection.packages.detection import should_stop as student_should_stop
 
 
-from tasks.object_detection.packages.agent import ObjectDetectionAgent
+from tasks.object_detection.packages.agent import ObjectDetectionAgent, CLASS_NAMES
 from tasks.object_detection.packages.stop_activity import should_stop as should_stop_obj_detection
 
 

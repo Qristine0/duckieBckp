@@ -8,7 +8,7 @@ MODEL_PATH = "tasks/object_detection/models/best.onnx"
 def NUMBER_FRAMES_SKIPPED() -> int:
     # 0 = run detection every frame.
     # For real bot, you can later try 1 or 2 if it becomes slow.
-    return 0
+    return 1
 
 
 def filter_by_classes(pred_class: int) -> bool:
