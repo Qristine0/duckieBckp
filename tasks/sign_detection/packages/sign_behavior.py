@@ -408,10 +408,11 @@ class SignBehaviorFSM:
 
     def _checkpath_step(self, detections):
         spd = self._speed("check_turn_speed", 0.04)
-        cl = self._frames("check_left_frames", 10)
-        cr = self._frames("check_right_frames", 4)
+        cl = self._frames("check_left_frames", 2)
+        cr = self._frames("check_right_frames", 2)
         cs = self._frames("check_settle_frames", 5)
-
+        print(cl)
+        print(cr)
         c = self._elapsed_frames()
         self._check_counter = c
 
@@ -455,20 +456,17 @@ class SignBehaviorFSM:
             return 0.0, 0.0
 
         # Re-center
-        if c < phase_c_end + 10:
+        if c < phase_c_end:
             return -spd, spd
 
         # Decision
-        right_stationary = is_stationary(self._right_offsets)
-
+        left_stationary = is_stationary(self._left_offsets)
+        print(self._left_offsets)
         # Project rule:
         # Vehicle on right => wait.
         # Vehicle on left => we have priority.
         if self._vehicle_seen_right:
-            if right_stationary:
-                print("[SignBehavior] vehicle on right — yielding")
-            else:
-                print("[SignBehavior] moving vehicle on right — yielding")
+            print("[SignBehavior] vehicle on right — yielding (always)")
 
             self._restart_current_state_timer()
             self._vehicle_seen_left = False
@@ -476,9 +474,24 @@ class SignBehaviorFSM:
             self._left_offsets.clear()
             self._right_offsets.clear()
             return 0.0, 0.0
-
+        
         if self._vehicle_seen_left:
-            print("[SignBehavior] vehicle on left — priority, continuing")
+            if left_stationary:
+                # stationary left → go
+                print("[SignBehavior] stationary vehicle on left — proceed")
+                self._vehicle_seen_left = False
+                self._left_offsets.clear()
+                self._right_offsets.clear()
+                self._set_state(State.POST_STOP)
+                return 0.0, 0.0
+            else:
+                # moving left → stop
+                print("[SignBehavior] moving vehicle on left — STOP")
+
+                self._restart_current_state_timer()
+                self._vehicle_seen_left = False
+                self._left_offsets.clear()
+                return 0.0, 0.0
 
         self._vehicle_seen_left = False
         self._vehicle_seen_right = False

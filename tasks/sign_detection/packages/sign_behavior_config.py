@@ -100,7 +100,7 @@ class SignBehaviorConfig:
         self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.055)
 
         # CHECKPATH sweep
-        self.check_left_frames: int = kwargs.pop("check_left_frames", 20)   
+        self.check_left_frames: int = kwargs.pop("check_left_frames", 10)   
         self.check_right_frames: int = kwargs.pop("check_right_frames", 10)
         self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.25)
         self.check_settle_frames: int = kwargs.pop("check_settle_frames", 30)
