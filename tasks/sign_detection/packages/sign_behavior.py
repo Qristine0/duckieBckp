@@ -57,6 +57,12 @@ class SignBehaviorFSM:
         self._last_step_time = None
         self._dt = 1.0 / self.FPS
 
+        # IMPORTANT:
+        # Used when server stops wheels because of duck/object detection.
+        # While paused, PRE_TURN/TURNING/EXITING timers do not advance.
+        self._timer_paused = False
+        self._timer_paused_at = None
+
     def reset(self):
         self.state = State.MOVING
 
@@ -89,9 +95,41 @@ class SignBehaviorFSM:
         self._last_step_time = None
         self._dt = 1.0 / self.FPS
 
+        self._timer_paused = False
+        self._timer_paused_at = None
+
         self.debug = {}
 
         print("[SignBehavior] FSM reset")
+
+    def set_timer_paused(self, paused: bool):
+        """
+        Pause/resume FSM timers.
+
+        This is called by the server when wheels are stopped by object/duck detection.
+        It prevents PRE_TURN/TURNING/EXITING timers from continuing while the robot is not moving.
+        """
+        now = time.monotonic()
+        paused = bool(paused)
+
+        if paused and not self._timer_paused:
+            self._timer_paused = True
+            self._timer_paused_at = now
+            return
+
+        if not paused and self._timer_paused:
+            paused_for = now - (self._timer_paused_at or now)
+
+            # Shift the state start forward by the paused duration.
+            # That makes elapsed time continue from where it stopped.
+            self._state_started_at += max(0.0, paused_for)
+
+            self._timer_paused = False
+            self._timer_paused_at = None
+
+            # Prevent one huge dt spike after pause.
+            self._last_step_time = now
+            self._dt = 1.0 / self.FPS
 
     def _safe_float(self, value, default=0.0):
         try:
@@ -122,8 +160,13 @@ class SignBehaviorFSM:
     def _seconds_to_frames(self, seconds):
         return self._safe_float(seconds, 0.0) * self.FPS
 
+    def _now_for_timer(self):
+        if self._timer_paused and self._timer_paused_at is not None:
+            return self._timer_paused_at
+        return time.monotonic()
+
     def _elapsed_seconds(self):
-        return max(0.0, time.monotonic() - self._state_started_at)
+        return max(0.0, self._now_for_timer() - self._state_started_at)
 
     def _elapsed_frames(self):
         return self._elapsed_seconds() * self.FPS
@@ -136,6 +179,9 @@ class SignBehaviorFSM:
         self._turn_counter = 0.0
         self._check_counter = 0.0
 
+        self._timer_paused = False
+        self._timer_paused_at = None
+
     def _restart_current_state_timer(self):
         self._state_started_at = time.monotonic()
 
@@ -143,8 +189,16 @@ class SignBehaviorFSM:
         self._turn_counter = 0.0
         self._check_counter = 0.0
 
+        self._timer_paused = False
+        self._timer_paused_at = None
+
     def _update_dt(self):
         now = time.monotonic()
+
+        if self._timer_paused:
+            self._dt = 0.0
+            self._last_step_time = now
+            return
 
         if self._last_step_time is None:
             self._dt = 1.0 / self.FPS
@@ -168,6 +222,9 @@ class SignBehaviorFSM:
             self._check_counter = 0.0
 
     def _tick_timers(self):
+        if self._timer_paused:
+            return
+
         if self._ignore_red_counter > 0.0:
             self._ignore_red_counter = max(0.0, self._ignore_red_counter - self._dt)
 
@@ -219,6 +276,7 @@ class SignBehaviorFSM:
             "state_elapsed_seconds": round(float(self._elapsed_seconds()), 3),
             "state_elapsed_frames_24fps": int(round(self._elapsed_frames())),
             "dt_seconds": round(float(self._dt), 4),
+            "timer_paused": bool(self._timer_paused),
         }
 
         return left, right, self.state
@@ -340,6 +398,7 @@ class SignBehaviorFSM:
                 0.06,
             )
 
+            # self._slow_factor = slow_ramp_factor * dt_frames
             self._slow_factor *= slow_ramp_factor ** dt_frames
 
             factor = max(self._slow_factor, self._slow_target)
@@ -405,7 +464,6 @@ class SignBehaviorFSM:
         print("servoing")
         return base_left, base_right
 
-
     def _checkpath_step(self, detections):
         spd = self._speed("check_turn_speed", 0.04)
         cl = self._frames("check_left_frames", 10)
@@ -455,41 +513,58 @@ class SignBehaviorFSM:
             return 0.0, 0.0
 
         # Re-center
-        if c < phase_c_end + 10:
+        if c < phase_c_end:
             return -spd, spd
 
         # Decision
-        right_stationary = is_stationary(self._right_offsets)
+        else:
+            left_stationary = is_stationary(self._left_offsets)
+            right_stationary = is_stationary(self._right_offsets)
 
-        # Project rule:
-        # Vehicle on right => wait.
-        # Vehicle on left => we have priority.
-        if self._vehicle_seen_right:
-            if right_stationary:
-                print("[SignBehavior] vehicle on right — yielding")
-            else:
-                print("[SignBehavior] moving vehicle on right — yielding")
+            # Moving vehicle on left
+            if self._vehicle_seen_left and not left_stationary:
+                print("[SignBehavior] moving vehicle on left — waiting")
+                self._check_counter = 0
+                self._vehicle_seen_left = False
+                self._vehicle_seen_right = False
+                self._left_offsets.clear()
+                self._right_offsets.clear()
+                return 0.0, 0.0
 
-            self._restart_current_state_timer()
+            # Moving vehicle on right
+            if self._vehicle_seen_right and not right_stationary:
+                print("[SignBehavior] moving vehicle on right — waiting")
+                self._check_counter = 0
+                self._vehicle_seen_left = False
+                self._vehicle_seen_right = False
+                self._left_offsets.clear()
+                self._right_offsets.clear()
+                return 0.0, 0.0
+
+            # Stopped robot on right gets priority
+            if self._vehicle_seen_right and right_stationary:
+                print("[SignBehavior] stopped vehicle on right — yielding")
+                self._check_counter = 0
+                self._vehicle_seen_left = False
+                self._vehicle_seen_right = False
+                self._left_offsets.clear()
+                self._right_offsets.clear()
+                return 0.0, 0.0
+
+            # Stopped robot on left => we go
+            if self._vehicle_seen_left and left_stationary:
+                print("[SignBehavior] stopped vehicle on left — taking priority")
+
+            self._turn_counter = 0
+            self.state = State.POST_STOP
+
             self._vehicle_seen_left = False
             self._vehicle_seen_right = False
             self._left_offsets.clear()
             self._right_offsets.clear()
+
+            print("[SignBehavior] >>> path clear — POST_STOP")
             return 0.0, 0.0
-
-        if self._vehicle_seen_left:
-            print("[SignBehavior] vehicle on left — priority, continuing")
-
-        self._vehicle_seen_left = False
-        self._vehicle_seen_right = False
-        self._left_offsets.clear()
-        self._right_offsets.clear()
-
-        self._set_state(State.POST_STOP)
-
-        print("[SignBehavior] >>> path clear — POST_STOP")
-        return 0.0, 0.0
-
 
     def _intersect_step(self, base_left, base_right):
         turn = self._chosen_turn or "forward"

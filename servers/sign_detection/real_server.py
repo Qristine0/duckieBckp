@@ -14,15 +14,11 @@ import cv2
 from flask import Flask, Response, render_template_string, jsonify, request
 
 from tasks.sign_detection.packages.agent_with_signs import LaneServoingAgentWithSigns as LaneServoingAgent
-from tasks.sign_detection.packages.sign_behavior import SignBehaviorConfig
+from tasks.sign_detection.packages.sign_behavior_config import SignBehaviorConfig
 from servers.object_detection.visualization import draw_detections, draw_status_overlay
-
 
 from tasks.object_detection.packages.agent import ObjectDetectionAgent, CLASS_NAMES
 from tasks.object_detection.packages.stop_activity import should_stop as should_stop_obj_detection
-
-
-
 
 from servers.templates.sign_detection import SIGN_DETECTION_TEMPLATE as HTML_TEMPLATE
 
@@ -32,25 +28,25 @@ from duckiebot.wheel_driver.wheels_driver_abs import WheelPWMConfiguration
 from launcher.ports import find_available_port
 from servers.common import make_frame_generator, shutdown_cleanup, suppress_http_logs
 
+
 app = Flask(__name__)
 lane_agent = None
-det_agent  = None
+det_agent = None
 camera = None
 wheels = None
 running = False
 manual_mode = False
 stop_event = threading.Event()
 
-_frame_queue     = queue.Queue(maxsize=1)
+_frame_queue = queue.Queue(maxsize=1)
 _last_detections = []
-_detection_lock  = threading.Lock()
-_stopped_by_det  = False
-_stop_reason     = ''
+_detection_lock = threading.Lock()
+_stopped_by_det = False
+_stop_reason = ''
 
 keys_pressed = {'up': False, 'down': False, 'left': False, 'right': False}
 _keys_lock = threading.Lock()
 _keys_last_update = time.time()
-
 
 _last_pwm_left = 0.0
 _last_pwm_right = 0.0
@@ -58,6 +54,35 @@ _last_sign_state = None
 _last_frame_time = 0.0
 _last_status_error = ""
 
+
+def _set_sign_timer_paused(paused: bool):
+    """
+    Pause/resume SignBehaviorFSM timer when server stops wheels externally.
+
+    This is needed because object detection stop happens OUTSIDE the FSM.
+    Without this, PRE_TURN/TURNING/EXITING timers continue while wheels are stopped.
+    """
+    if lane_agent is None:
+        return
+
+    possible_objects = [
+        lane_agent,
+        getattr(lane_agent, "sign_behavior", None),
+        getattr(lane_agent, "sign_fsm", None),
+        getattr(lane_agent, "fsm", None),
+        getattr(lane_agent, "_sign_behavior", None),
+        getattr(lane_agent, "_sign_fsm", None),
+        getattr(lane_agent, "_fsm", None),
+    ]
+
+    for obj in possible_objects:
+        if obj is None:
+            continue
+
+        fn = getattr(obj, "set_timer_paused", None)
+        if callable(fn):
+            fn(bool(paused))
+            return
 
 
 def visualize(frame_bgr):
@@ -68,6 +93,7 @@ def visualize(frame_bgr):
     _last_status_error = ""
 
     frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
     if det_agent is not None and det_agent.model_loaded:
         try:
             small = cv2.resize(
@@ -81,11 +107,11 @@ def visualize(frame_bgr):
     if wheels is None:
         return draw_status_overlay(frame_bgr, 'Initializing...')
 
-
     with _detection_lock:
         detections = list(_last_detections)
 
     if manual_mode:
+        _set_sign_timer_paused(True)
         _stopped_by_det = False
         _stop_reason = ""
         _last_sign_state = "MANUAL"
@@ -93,6 +119,10 @@ def visualize(frame_bgr):
 
     if lane_agent is not None:
         try:
+            # If previous frame was stopped by detection, freeze FSM timer before compute_commands.
+            # This prevents TURNING/PRE_TURN/EXITING from counting while wheels are not moving.
+            _set_sign_timer_paused(bool(_stopped_by_det))
+
             result = lane_agent.compute_commands(frame_rgb, detections)
 
             if len(result) == 3:
@@ -104,29 +134,33 @@ def visualize(frame_bgr):
             _last_pwm_left = float(pwm_left)
             _last_pwm_right = float(pwm_right)
             _last_sign_state = state
-            
+
             _draw_lane_debug(frame_bgr)
 
-            # should_stop_flag, reason = _should_stop(detections, state,lane_agent._white_lane)
-            should_stop, reason = _should_stop(detections, state)
-             
+            should_stop, reason = _should_stop(detections, det_agent.img_size if det_agent else frame_bgr.shape[0], state)
+
             _stopped_by_det = bool(should_stop)
             _stop_reason = reason or ""
 
+            # After current stop decision, set pause state for the next frame.
+            # If stopped: timer stays frozen.
+            # If clear: timer resumes and continues from same value.
+            print(bool(should_stop))
+            _set_sign_timer_paused(bool(should_stop))
+
             if running and not should_stop and wheels is not None:
-                wheels.set_wheels_speed(pwm_left, pwm_right)    
+                wheels.set_wheels_speed(pwm_left, pwm_right)
             elif wheels is not None:
                 wheels.set_wheels_speed(0.0, 0.0)
-                
-            # if detections:
-            #     draw_detections(frame_bgr, detections)
-            
+
             if det_agent is not None and det_agent.model_loaded and detections:
                 oh, ow = frame_bgr.shape[:2]
                 sx = ow / det_agent.img_size
                 sy = oh / det_agent.img_size
-                scaled = [((int(x1*sx), int(y1*sy), int(x2*sx), int(y2*sy)), s, c)
-                        for (x1, y1, x2, y2), s, c in detections]
+                scaled = [
+                    ((int(x1 * sx), int(y1 * sy), int(x2 * sx), int(y2 * sy)), s, c)
+                    for (x1, y1, x2, y2), s, c in detections
+                ]
                 draw_detections(frame_bgr, scaled)
 
         except Exception as e:
@@ -137,6 +171,8 @@ def visualize(frame_bgr):
             _last_pwm_right = 0.0
             _stopped_by_det = True
             _stop_reason = _last_status_error
+
+            _set_sign_timer_paused(True)
 
             if wheels is not None:
                 wheels.set_wheels_speed(0.0, 0.0)
@@ -175,6 +211,7 @@ def _json_safe(value):
     except Exception:
         return None
 
+
 def _draw_lane_debug(frame_bgr):
     if lane_agent is None:
         return
@@ -187,7 +224,6 @@ def _draw_lane_debug(frame_bgr):
 
     h, w = frame_bgr.shape[:2]
 
-    # Draw horizontal slice lines
     for y in slice_ys:
         y = int(y)
         if 0 <= y < h:
@@ -202,7 +238,6 @@ def _draw_lane_debug(frame_bgr):
                 1,
             )
 
-    # Draw yellow selected points
     for i, x in enumerate(yellow_xs):
         if i >= len(slice_ys):
             break
@@ -222,7 +257,6 @@ def _draw_lane_debug(frame_bgr):
                 1,
             )
 
-    # Draw white selected points
     for i, x in enumerate(white_xs):
         if i >= len(slice_ys):
             break
@@ -242,7 +276,6 @@ def _draw_lane_debug(frame_bgr):
                 1,
             )
 
-    # Draw center between yellow and white if both exist
     count = min(len(yellow_xs), len(white_xs), len(slice_ys))
 
     for i in range(count):
@@ -254,8 +287,8 @@ def _draw_lane_debug(frame_bgr):
         if 0 <= cx < w and 0 <= y < h:
             cv2.circle(frame_bgr, (cx, y), 4, (0, 255, 0), -1)
             cv2.line(frame_bgr, (yx, y), (wx, y), (0, 180, 0), 1)
-            
-            
+
+
 def _safe_list(value):
     if value is None:
         return []
@@ -290,22 +323,18 @@ def _lane_debug_payload():
     return {
         "available": True,
 
-        # Basic lane status
         "frame_count": _safe_int(dbg.get("frame_count", 0)),
         "lane_detected": bool(dbg.get("lane_detected", False)),
         "total_lane_pixels": _safe_int(dbg.get("total_lane_pixels", 0)),
         "lateral_error": _safe_float(dbg.get("lateral_error", 0.0)),
 
-        # Slices debug
         "slice_ys": _safe_list(dbg.get("slice_ys", [])),
         "yellow_xs": _safe_list(dbg.get("yellow_xs", [])),
         "white_xs": _safe_list(dbg.get("white_xs", [])),
 
-        # Curve debug
         "is_curve": bool(dbg.get("is_curve", False)),
         "curve_dir": _safe_int(dbg.get("curve_dir", 0)),
 
-        # Current lane params
         "params": {
             "base_speed": _safe_float(getattr(lane_agent, "base_speed", 0.0)),
             "curve_speed": _safe_float(getattr(lane_agent, "curve_speed", 0.0)),
@@ -345,7 +374,6 @@ def _detections_payload(dets):
     return payload
 
 
-
 @app.route("/status")
 def status():
     with _detection_lock:
@@ -361,67 +389,46 @@ def status():
     now = time.time()
 
     return jsonify({
-        # Server
         "hostname": socket.gethostname(),
         "time": now,
         "last_frame_age_sec": round(now - _last_frame_time, 3) if _last_frame_time else None,
         "last_error": _last_status_error,
 
-        # Runtime state
         "running": bool(running),
         "manual_mode": bool(manual_mode),
         "camera_ready": camera is not None,
         "wheels_ready": wheels is not None,
         "agent_ready": lane_agent is not None,
 
-        # Detection/model status
-        # "model_loaded": True,
-        # "load_error": None,
-        # "trt_building": False,
-        # "conf_threshold": 0.5,
-        'model_loaded':         det_agent.model_loaded if det_agent else False,
-        'load_error':           det_agent.load_error if det_agent else None,
-        'trt_building':         getattr(det_agent, 'trt_building', False) if det_agent else False,
-        # 'stopped_by_detection': _stopped_by_det,
-        # 'stop_reason':          _stop_reason,
-        'conf_threshold': det_agent.conf_threshold if det_agent else 0.5,
-        'detections': [
-            {'class': CLASS_NAMES.get(c, str(c)), 'score': round(s, 3), 'bbox': list(b)}
-            for b, s, c in dets
-        ],
-        
+        "model_loaded": det_agent.model_loaded if det_agent else False,
+        "load_error": det_agent.load_error if det_agent else None,
+        "trt_building": getattr(det_agent, 'trt_building', False) if det_agent else False,
+        "conf_threshold": det_agent.conf_threshold if det_agent else 0.5,
+
         "detection_count": len(dets),
-        
-        # Stop state
+
         "stopped_by_detection": bool(_stopped_by_det),
         "stop_reason": _stop_reason,
 
-        # Last motor command
         "last_pwm": {
             "left": round(float(_last_pwm_left), 4),
             "right": round(float(_last_pwm_right), 4),
         },
 
-        # Lane-follow debug
         "lane_debug": _lane_debug_payload(),
 
-        # Sign FSM debug
         "sign_state": _json_safe(sign_state or _last_sign_state),
         "sign_debug": _json_safe(sign_debug),
 
-        # Object detections
-        # "detections": _detections_payload(dets),
-        # "detection_count": len(dets),
+        "detections": _detections_payload(dets),
 
-        # Manual keys
         "keys_pressed": dict(keys_pressed),
     })
 
 
-
-
 def manual_control_loop():
     global _keys_last_update
+
     while not stop_event.is_set():
         if not manual_mode or not wheels:
             time.sleep(0.05)
@@ -436,10 +443,13 @@ def manual_control_loop():
             kc = keys_pressed.copy()
 
         left = right = 0.0
+
         if kc['up']:
             left, right = 0.5, 0.5
+
         if kc['down']:
             left, right = -0.5, -0.5
+
         if kc['up'] and kc['left']:
             left, right = 0.2, 0.5
         elif kc['up'] and kc['right']:
@@ -453,14 +463,11 @@ def manual_control_loop():
         time.sleep(0.05)
 
 
-# def _should_stop(detections, state, white_lane):
-#     return student_should_stop(detections, state, white_lane)
-
-
-def _should_stop(detections, state):
+def _should_stop(detections, img_size, state):
     if det_agent is None:
         return False, ''
-    return should_stop_obj_detection(detections, det_agent.img_size, state)
+    return should_stop_obj_detection(detections, img_size, state)
+
 
 generate_frames = make_frame_generator(lambda: camera, visualize, quality=50, rgb=False)
 
@@ -486,29 +493,42 @@ def start():
 def stop():
     global running
     running = False
+
+    _set_sign_timer_paused(True)
+
     if wheels:
         wheels.set_wheels_speed(0.0, 0.0)
+
     return jsonify({'status': 'stopped'})
 
 
 @app.route('/set_mode', methods=['POST'])
 def set_mode():
     global manual_mode
+
     mode = request.json.get('mode', 'auto') if request.json else 'auto'
     manual_mode = (mode == 'manual')
+
+    _set_sign_timer_paused(bool(manual_mode))
+
     if wheels and not manual_mode:
         wheels.set_wheels_speed(0.0, 0.0)
+
     return jsonify({'mode': 'manual' if manual_mode else 'auto'})
 
 
 @app.route('/keys', methods=['POST'])
 def update_keys():
     global _keys_last_update
+
     data = request.json or {}
+
     with _keys_lock:
         for k in keys_pressed:
             keys_pressed[k] = bool(data.get(k, False))
+
     _keys_last_update = time.time()
+
     return jsonify({'status': 'ok'})
 
 
@@ -517,18 +537,21 @@ def set_threshold():
     return jsonify({'conf_threshold': 0.5})
 
 
-
 def detection_loop():
     global _last_detections
+
     while not stop_event.is_set():
         if det_agent is None or not det_agent.model_loaded:
             time.sleep(0.1)
             continue
+
         try:
             frame_rgb = _frame_queue.get(timeout=0.5)
         except queue.Empty:
             continue
+
         result = det_agent.detect(frame_rgb)
+
         if result is not None:
             with _detection_lock:
                 _last_detections = result
@@ -538,11 +561,13 @@ def main():
     global lane_agent, det_agent, camera, wheels
 
     import argparse
+
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=5000)
     args = ap.parse_args()
 
     suppress_http_logs()
+
     print('=' * 60)
     print('OBJECT DETECTION — LANE FOLLOW + STOP ON DETECTION')
     print('=' * 60)
@@ -561,23 +586,24 @@ def main():
 
     def _init_agents():
         global lane_agent, det_agent
+
         sign_config = SignBehaviorConfig()
         lane_agent = LaneServoingAgent(sign_config=sign_config)
-        
+
         print(f'[Init] Lane agent ready (speed={lane_agent.base_speed})')
         print(f"  p_gain={lane_agent.p_gain}, d_gain={lane_agent.d_gain}, base_speed={lane_agent.base_speed}")
-        
+
         det_agent = ObjectDetectionAgent()
+
         if det_agent.model_loaded:
             print(f'[Init] Detection model ready ({det_agent.img_size}px)')
         else:
             print(f'[Init] Detection model: {det_agent.load_error}')
 
-
     threading.Thread(target=_init_wheels, daemon=True).start()
     threading.Thread(target=_init_camera, daemon=True).start()
     threading.Thread(target=_init_agents, daemon=True).start()
-    threading.Thread(target=detection_loop,    daemon=True).start()
+    threading.Thread(target=detection_loop, daemon=True).start()
     threading.Thread(target=manual_control_loop, daemon=True).start()
 
     def _shutdown(signum, frame):
@@ -588,6 +614,7 @@ def main():
     signal.signal(signal.SIGINT, _shutdown)
 
     web_port = find_available_port(args.port)
+
     print(f'\nWeb Interface: http://{socket.gethostname()}.local:{web_port}')
     print('=' * 60 + '\n')
 

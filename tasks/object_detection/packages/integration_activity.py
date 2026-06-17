@@ -44,4 +44,4 @@ def filter_by_bboxes(bbox: Tuple[int, int, int, int]) -> bool:
 
     area = box_w * box_h
 
-    return area > 80
+    return box_w >= 8 and box_h >= 8 and area > 80
