@@ -71,6 +71,7 @@ def _valid_truck_threat(
     bbox: Tuple[int, int, int, int],
     score: float,
     img_size: int,
+    state = None
 ) -> bool:
     x1, y1, x2, y2 = bbox
 
@@ -86,7 +87,10 @@ def _valid_truck_threat(
         return False
 
     # Truck can be slightly sideways, but must still be near our path.
-    if box_cx < img_size * 0.35 or box_cx > img_size * 0.65:
+    if state == State.MOVING and (box_cx < img_size * 0.35 or box_cx > img_size * 0.65):
+        return False
+    
+    if State != State.MOVING and (box_cx < img_size * 0.05 or box_cx > img_size * 0.95):
         return False
     
     print(box_cx)
@@ -123,7 +127,7 @@ def should_stop(detections: List[Detection], img_size: int, state = None) -> Tup
                 reason = f"duckie close enough score={score:.2f} bbox={bbox}"
 
         elif cls_id == 1:
-            if _valid_truck_threat(bbox, score, img_size):
+            if _valid_truck_threat(bbox, score, img_size, state):
                 truck_threat = True
                 reason = f"truck close enough score={score:.2f} bbox={bbox}"
 
