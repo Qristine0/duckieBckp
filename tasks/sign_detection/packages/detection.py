@@ -20,16 +20,20 @@ CLASS_COLORS = {
 vehicle_min_bbox_area = 800
 # intersection crossing check
 def vehicle_detected(detections):
+    # ((572, 150, 609, 270), 0.7171141505241394, 2)
+    print("VEHICLEEE")
+    print(detections)
     # Used by sign_behavior.py during CHECKPATH.
     if detections is None:
         detections = []
-
+    # x1, y1, x2, y2
     for (x1, y1, x2, y2), score, cls_id in detections:
         if cls_id != 1:
             continue
 
         area = (x2 - x1) * (y2 - y1)
-
+        print("AREAAAAAAAAAAAAAAAAA")
+        print(area)
         if area < vehicle_min_bbox_area:
             continue
 

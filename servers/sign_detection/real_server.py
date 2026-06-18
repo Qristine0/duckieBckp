@@ -388,6 +388,7 @@ def status():
 
     now = time.time()
 
+    fsm = getattr(lane_agent, "_sign_fsm", None) if lane_agent else None
     return jsonify({
         "hostname": socket.gethostname(),
         "time": now,
@@ -409,6 +410,7 @@ def status():
 
         "stopped_by_detection": bool(_stopped_by_det),
         "stop_reason": _stop_reason,
+        "checkpath": getattr(fsm, "_checkpath_text", "noFSM") if fsm else "Lane Agent Not loaded",
 
         "last_pwm": {
             "left": round(float(_last_pwm_left), 4),

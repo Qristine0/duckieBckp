@@ -528,6 +528,7 @@ let prevRunning = null;
 let prevManual = null;
 let prevStop = null;
 let prevSignState = null;
+let prevCheckpath = null;
 let prevLaneDetected = null;
 let prevDetectionSig = '';
 let pollCounter = 0;
@@ -546,6 +547,7 @@ function renderRuntime(data) {
         ['last_pwm.right', data.last_pwm ? data.last_pwm.right : null],
         ['stopped_by_detection', data.stopped_by_detection],
         ['stop_reason', data.stop_reason || ''],
+        ['checkpath', data.checkpath || '']
     ]);
 }
 
@@ -600,7 +602,6 @@ function renderSign(data) {
 
 function renderDetections(data) {
     const dets = data.detections || [];
-
     const count = document.getElementById('det-count');
     count.textContent = dets.length ? dets.length + ' found' : '0 found';
 
@@ -662,6 +663,12 @@ function statusLogs(data) {
         addLog('[SignFSM] ' + prevSignState + ' -> ' + data.sign_state, 'state');
     }
     prevSignState = data.sign_state;
+
+    if (data.checkpath !== prevCheckpath) {
+        addLog('[CHECKPATH] ' + (data.checkpath || ''), 'state');
+    }
+    prevCheckpath = data.checkpath;
+
 
     const lane = data.lane_debug || {};
     if (prevLaneDetected !== null && prevLaneDetected !== lane.lane_detected) {

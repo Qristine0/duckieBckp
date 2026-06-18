@@ -101,29 +101,30 @@ class SignBehaviorConfig:
         self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.055)
 
         # CHECKPATH sweep
-        self.check_left_frames: int = kwargs.pop("check_left_frames", 20)   
-        self.check_right_frames: int = kwargs.pop("check_right_frames", 20)
-        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.25)
-        self.check_settle_frames: int = kwargs.pop("check_settle_frames", 30)
+        self.check_left_frames: int = kwargs.pop("check_left_frames", 12)   
+        self.check_right_frames: int = kwargs.pop("check_right_frames", 8)   #prev 20
+        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.3)
+        self.check_settle_frames: int = kwargs.pop("check_settle_frames", 50)
 
         # POST_STOP
-        self.post_stop_frames: int = kwargs.pop("post_stop_frames", 40)
+        self.post_stop_frames: int = kwargs.pop("post_stop_frames", 45)
         self.post_stop_speed: float = kwargs.pop("post_stop_speed", 0.4)
 
         # Pre-turn forward creep
         self.preturn_right_frames: int = kwargs.pop("preturn_right_frames", 20)
-        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 18)
+        self.preturn_left_frames: int = kwargs.pop("preturn_left_frames", 8)
         self.preturn_speed: float = kwargs.pop("preturn_speed", 0.4)
 
         # Intersection manoeuvres
-        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 40)
-        self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 40)
+        self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 60)
+        self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 48)
         self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 25)
 
         # for new bot right needs more speed
         self.intersect_forward_speed: Tuple[float, float] = kwargs.pop(
             "intersect_forward_speed",
-            (0.4, 0.5),
+            # (0.4, 0.4),
+            (0.32, 0.36),
         )
         self.intersect_left_speed: Tuple[float, float] = kwargs.pop(
             "intersect_left_speed",
