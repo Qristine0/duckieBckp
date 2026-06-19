@@ -481,15 +481,6 @@ class SignBehaviorFSM:
         cl = self._frames("check_left_frames", 10)
         cr = self._frames("check_right_frames", 4)
         cs = self._frames("check_settle_frames", 5)
-        print("CSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSS")
-        print(cs)
-        print(cs)
-        print(cs)
-        print(cs)
-        print(cs)
-        print(cs)
-        print(cs)
-        
         c = self._elapsed_frames()
         self._check_counter = c
 
@@ -500,12 +491,11 @@ class SignBehaviorFSM:
         phase_c_end = phase_b_settle + cl
 
         # prev 0.05
-        def is_stationary(offsets, threshold=100):
+        def is_stationary(offsets, threshold=0.05):
             if len(offsets) < 2:
-                return True
-            print("OFFSETS")
-            print(max(offsets) - min(offsets))
-            return (max(offsets) - min(offsets)) < threshold
+                return 0, True
+            diff = max(offsets) - min(offsets)
+            return (diff, diff < threshold)
 
         # Look left
         if c < phase_a_end:
@@ -513,7 +503,7 @@ class SignBehaviorFSM:
 
         # Hold left and detect
         if c < phase_a_settle:
-            if c > phase_a_end + 1:
+            if c > phase_a_end + 4:
                 seen, offset = self._vehicle_detected(detections)
                 if seen:
                     self._vehicle_seen_left = True
@@ -541,9 +531,8 @@ class SignBehaviorFSM:
 
         # Decision
         else:
-            left_stationary = is_stationary(self._left_offsets)
-            right_stationary = is_stationary(self._right_offsets)
-            print("OFSETSSSSSSSSSSSSSSSSSSSSSSSSSSS")
+            left_diff, left_stationary = is_stationary(self._left_offsets)
+            right_diff, right_stationary = is_stationary(self._right_offsets)
             print("OFSETSSSSSSSSSSSSSSSSSSSSSSSSSSS")
             print("OFSETSSSSSSSSSSSSSSSSSSSSSSSSSSS")
             print("OFSETSSSSSSSSSSSSSSSSSSSSSSSSSSS")
@@ -554,7 +543,8 @@ class SignBehaviorFSM:
             
             # Moving vehicle on left
             if self._vehicle_seen_left and not left_stationary:
-                self._checkpath_text = "[SignBehavior] moving vehicle on left — waiting"
+            # if self._vehicle_seen_left:
+                self._checkpath_text = f"[SignBehavior] moving vehicle on left — waiting. left offset: {left_diff:.2f} right offset: {right_diff:.2f}"
                 print("[SignBehavior] moving vehicle on left — waiting")
                 # self._check_counter = 0
                 self._restart_current_state_timer()
@@ -566,7 +556,7 @@ class SignBehaviorFSM:
 
             # Moving vehicle on right
             if self._vehicle_seen_right and not right_stationary:
-                self._checkpath_text = "[SignBehavior] moving vehicle on right — waiting"
+                self._checkpath_text = f"[SignBehavior] moving vehicle on right — waiting. left offset: {left_diff:.2f} right offset: {right_diff:.2f}"
                 print("[SignBehavior] moving vehicle on right — waiting")
                 # self._check_counter = 0
                 self._restart_current_state_timer()
@@ -578,7 +568,7 @@ class SignBehaviorFSM:
 
             # Stopped robot on right gets priority
             if self._vehicle_seen_right and right_stationary:
-                self._checkpath_text = "[SignBehavior] stopped vehicle on right — yielding"
+                self._checkpath_text = f"[SignBehavior] stopped vehicle on right — yielding. left offset: {left_diff:.2f} right offset: {right_diff:.2f}"
                 print("[SignBehavior] stopped vehicle on right — yielding")
                 # self._check_counter = 0
                 self._restart_current_state_timer()
@@ -590,7 +580,7 @@ class SignBehaviorFSM:
 
             # Stopped robot on left => we go
             if self._vehicle_seen_left and left_stationary:
-                self._checkpath_text = "[SignBehavior] stopped vehicle on left — taking priority"
+                self._checkpath_text = f"[SignBehavior] stopped vehicle on left — taking priority. left offset: {left_diff:.2f} right offset: {right_diff:.2f}"
                 print("[SignBehavior] stopped vehicle on left — taking priority")
             else:
                 self._checkpath_text = "[SignBehavior] >>> path clear — POST_STOP"

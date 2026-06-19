@@ -39,6 +39,8 @@ def vehicle_detected(detections):
 
         centre_x = (x1 + x2) / 2.0
         offset = abs(centre_x - IMG_WIDTH / 2) / IMG_WIDTH
+        # offset = centre_x / IMG_WIDTH
+        # offset = centre_x
 
         print(f"[SignBehavior] vehicle detected (area={area:.0f}, offset={offset:.3f})")
         return True, offset
