@@ -2,15 +2,30 @@
 
 [ext_resource type="PackedScene" uid="uid://by8pqr474iaqj" path="res://scenes/duckie_bot.tscn" id="1_h126k"]
 [ext_resource type="Environment" uid="uid://xlfv0dsmbfcm" path="res://Environment.tres" id="2_t8tjl"]
-[ext_resource type="Texture2D" uid="uid://d3w6b510itg4t" path="res://scenes/sign.png" id="3_eqtro"]
+[ext_resource type="Texture2D" uid="uid://cjaji0njw1iim" path="res://scenes/left_right.png" id="3_i1h3q"]
+[ext_resource type="Texture2D" uid="uid://cbhtgmvf5i23t" path="res://scenes/left_forward.png" id="4_2dksj"]
+[ext_resource type="Texture2D" uid="uid://bx2lybcaxvu2s" path="res://scenes/stop_with_tag.png" id="5_240fp"]
 [ext_resource type="PackedScene" uid="uid://3d3mqjeeyhw6" path="res://scenes/IntroductionBase.tscn" id="5_du2b5"]
+[ext_resource type="Texture2D" uid="uid://c0end34kk1yq0" path="res://scenes/forward_right.png" id="6_2v6gh"]
 
 [sub_resource type="WorldBoundaryShape3D" id="WorldBoundaryShape3D_b05od"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tkgvi"]
-albedo_texture = ExtResource("3_eqtro")
+albedo_texture = ExtResource("3_i1h3q")
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_4uon1"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_q03fx"]
+albedo_texture = ExtResource("4_2dksj")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_5fjla"]
+albedo_texture = ExtResource("5_240fp")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_i1h3q"]
+albedo_texture = ExtResource("6_2v6gh")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2dksj"]
+albedo_texture = ExtResource("3_i1h3q")
 
 [node name="MapFollower" type="Node3D" unique_id=1690158760]
 
@@ -33,11 +48,46 @@ shape = SubResource("WorldBoundaryShape3D_b05od")
 [node name="NavigationObstacle3D" type="NavigationObstacle3D" parent="." unique_id=2130121707]
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1754924046]
-transform = Transform3D(0.0427395, -9.744634e-05, 0, -2.2850856e-05, -0.0004521685, -0.07945705, 0.00045820436, 0.009066863, -0.0039625596, 5.697505, 0.106426716, 3.3684077)
+transform = Transform3D(0.0427395, -9.744634e-05, 0, -2.2850856e-05, -0.0004521685, -0.07945705, 0.00045820436, 0.009066863, -0.0039625596, 6.3377028, 0.106426716, 0.9877925)
 material_override = SubResource("StandardMaterial3D_tkgvi")
 mesh = SubResource("PlaneMesh_4uon1")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D" unique_id=867727638]
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="." unique_id=1958892932]
+transform = Transform3D(0.0011451314, 0.009064125, -0.0039620474, -2.2850854e-05, -0.00045216846, -0.079457045, -0.04272661, 0.00024317269, -6.369398e-05, 6.3377028, 0.106426716, 0.42297316)
+material_override = SubResource("StandardMaterial3D_q03fx")
+mesh = SubResource("PlaneMesh_4uon1")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D3" unique_id=965971853]
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="." unique_id=1243622988]
+transform = Transform3D(-0.042740848, -6.4921944e-05, 7.095393e-05, -2.2850862e-05, -0.00045216843, -0.07945704, 0.00030716904, -0.009067154, 0.0039619245, 4.030635, 0.106426716, 2.7967525)
+material_override = SubResource("StandardMaterial3D_q03fx")
+mesh = SubResource("PlaneMesh_4uon1")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D4" unique_id=1656808668]
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="." unique_id=1814687983]
+transform = Transform3D(0.0427395, -9.744634e-05, 0, -2.2850856e-05, -0.0004521685, -0.07945705, 0.00045820436, 0.009066863, -0.0039625596, 5.709895, 0.106426716, 3.3800044)
+material_override = SubResource("StandardMaterial3D_5fjla")
+mesh = SubResource("PlaneMesh_4uon1")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D2" unique_id=383306843]
+
+[node name="MeshInstance3D6" type="MeshInstance3D" parent="." unique_id=649584679]
+transform = Transform3D(0.0002858882, 0.009067182, -0.0039625275, -2.2850854e-05, -0.00045216846, -0.079457045, -0.042740997, 6.0890747e-05, 1.5975225e-05, 5.739192, 0.106426716, 2.827026)
+material_override = SubResource("StandardMaterial3D_i1h3q")
+mesh = SubResource("PlaneMesh_4uon1")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D6" unique_id=1492286171]
+
+[node name="MeshInstance3D5" type="MeshInstance3D" parent="." unique_id=1108556027]
+transform = Transform3D(-0.0006010689, 0.009066493, -0.0039613424, -2.2850854e-05, -0.00045216846, -0.079457045, -0.042737726, -0.00012727056, 9.819605e-05, 4.5611525, 0.106426716, 2.8345942)
+material_override = SubResource("StandardMaterial3D_2dksj")
+mesh = SubResource("PlaneMesh_4uon1")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D5" unique_id=551105662]
 
 [node name="KiuPathObj" parent="." unique_id=1908243731 instance=ExtResource("5_du2b5")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.2620525, 0.010445523, 4.8696938)

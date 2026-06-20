@@ -6,16 +6,26 @@ from typing import Dict, List, Tuple
 class TagID(IntEnum):
     STOP            = 1
     YIELD           = 12
-    TURN_LEFT_FWD   = 12
-    TURN_LEFT_RIGHT = 3
-    TURN_RIGHT_FWD  = 4
+    TURN_LEFT_FWD   = 10
+    TURN_LEFT_RIGHT = 11
+    TURN_RIGHT_FWD  = 9
     TURN_ALL        = 5
 
+# leftRight.jpg: tag_id=11
+# left_forward.jpg: tag_id=10
+# right_forward.jpg: tag_id=9
+# stop.jpg: tag_id=26
+# stop2.jpg: tag_id=20
+# stop3.jpg: tag_id=24
+# stop4.jpg: tag_id=25
+# stop5.jpg: tag_id=26
+# stop6.jpg: tag_id=26
+# yield.jpg: tag_id=39
 
 _TAG_TURNS = {
     TagID.TURN_LEFT_RIGHT: ["left",  "right"],
-    # TagID.TURN_LEFT_FWD:   ["left", "forward"],
-    TagID.TURN_LEFT_FWD:   ["left"],
+    TagID.TURN_LEFT_FWD:   ["left", "forward"],
+    # TagID.TURN_LEFT_FWD:   ["left"],
     TagID.TURN_RIGHT_FWD:  ["right", "forward"],
     TagID.TURN_ALL:        ["left",  "right", "forward"],
 }  # type: Dict[int, List[str]]
@@ -69,7 +79,7 @@ class SignBehaviorConfig:
 
     # Pre-turn forward creep 
     preturn_right_frames = 11  #prev 30
-    preturn_left_frames  = 20  # prev 40
+    preturn_left_frames  = 18  # prev 40
     preturn_speed        = 0.20
 
     # Intersection manoeuvres
