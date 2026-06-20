@@ -12,28 +12,20 @@ def NUMBER_FRAMES_SKIPPED() -> int:
 
 
 def filter_by_classes(pred_class: int) -> bool:
-    """
-    Classes:
-        0 = duckie
-        1 = truck
-        2 = sign
-    """
+    # Classes:
+    #     0 = duckie
+    #     1 = truck
+    #     2 = sign
     return pred_class in (0, 1, 2)
 
 
 def filter_by_scores(score: float) -> bool:
-    """
-    Generic score filter.
-    Class-specific score filtering is also done inside agent.py.
-    """
+    # Generic score filter.
     return score >= 0.20
 
 
 def filter_by_bboxes(bbox: Tuple[int, int, int, int]) -> bool:
-    """
-    Generic bbox filter.
-    Class-specific duck/truck/sign filters are inside agent.py.
-    """
+    # Generic bbox filter.
     xmin, ymin, xmax, ymax = bbox
 
     box_w = xmax - xmin

@@ -1,9 +1,4 @@
-"""
-agent_with_signs.py
-===================
-
-Lane-following agent with sign/intersection behavior added on top.
-"""
+# Lane-following agent with sign/intersection behavior added on top.
 
 from typing import List, Optional, Tuple
 
@@ -15,11 +10,8 @@ from tasks.sign_detection.packages.sign_behavior_config import SignBehaviorConfi
 
 
 class LaneServoingAgentWithSigns(LaneServoingAgent):
-    """
-    Extends LaneServoingAgent with AprilTag + red-line behavior.
-
-    compute_commands(image, detections=None)
-    """
+    # Extends LaneServoingAgent with AprilTag + red-line behavior.
+    # compute_commands(image, detections=None)
 
     def __init__(self, config_path=None, sign_config=None, **kwargs):
         # Do not pass old sign kwargs into LaneServoingAgent.

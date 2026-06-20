@@ -33,13 +33,12 @@ def resolve_tag(raw_id: int) -> Optional[TagID]:
 
 
 _TAG_TURNS: Dict[TagID, List[str]] = {
-    # TagID.TURN_LEFT_RIGHT: ["left", "right"],
-    # TagID.TURN_LEFT_RIGHT: ["right"],
-    TagID.TURN_LEFT_RIGHT: ["forward"],
-    # TagID.TURN_LEFT_FWD: ["left", "forward"],
-    TagID.TURN_LEFT_FWD: ["left"],
-    TagID.TURN_RIGHT_FWD: ["right"],
-    # TagID.TURN_RIGHT_FWD: ["right", "forward"],
+    TagID.TURN_LEFT_RIGHT: ["left", "right"],
+    # TagID.TURN_LEFT_RIGHT: ["forward"],
+    TagID.TURN_LEFT_FWD: ["left", "forward"],
+    # TagID.TURN_LEFT_FWD: ["left"],
+    # TagID.TURN_RIGHT_FWD: ["right"],
+    TagID.TURN_RIGHT_FWD: ["right", "forward"],
 }
 
 

@@ -112,7 +112,7 @@ def _strip_center_x(mask: np.ndarray, y: int, white_x = None, prefer_right: bool
     
         
     if white_x is not None:
-        DIST_THRESH = 200  # todo tune
+        DIST_THRESH = 200  
 
         filtered = [
             c for c in candidates
@@ -122,7 +122,7 @@ def _strip_center_x(mask: np.ndarray, y: int, white_x = None, prefer_right: bool
         if len(filtered) > 0:
             candidates = filtered
 
-    # todo yviteli borbali
+    # yviteli borbali
     # tetrze marjvniv ar iyos
     best = max(candidates, key=lambda c: np.median(c))
 
@@ -182,16 +182,6 @@ class LaneServoingAgent:
         self.detection_threshold = cfg.get("detection_threshold", 80)
         
         self._white_lane = []
-        
-# base_speed: 0.30
-# curve_boost: 1.0
-# curve_speed: 0.1
-# curve_threshold: 350
-# d_gain: 0.11   #heading gain
-# detection_threshold: 80
-# max_steer: 0.22
-# p_gain: 0.20    #lateral gain  franky - 0.18, 0.24 gladius (needs diff right checkpath frames)
-# steering_threshold: 0.2
 
 
         self.frame_count = 0
