@@ -143,8 +143,8 @@ def should_stop(detections: List[Detection], img_size: int, state = None) -> Tup
         _truck_counter = max(0, _truck_counter - 1)
         
 
-    confirmed_duck = ((state == State.TURNING or state == State.EXITING) and _duck_counter >= 1) or _duck_counter >= _DUCK_FRAMES_REQUIRED
-    confirmed_truck = ((state == State.TURNING or state == State.EXITING) and  _truck_counter >= 1) or _truck_counter >= _TRUCK_FRAMES_REQUIRED
+    confirmed_duck = ((state == State.TURNING or state == State.EXITING or state == State.POST_STOP) and _duck_counter >= 1) or _duck_counter >= _DUCK_FRAMES_REQUIRED
+    confirmed_truck = ((state == State.TURNING or state == State.EXITING or state == State.POST_STOP) and  _truck_counter >= 1) or _truck_counter >= _TRUCK_FRAMES_REQUIRED
 
     if confirmed_duck or confirmed_truck:
         _stop_latch = _STOP_LATCH_FRAMES

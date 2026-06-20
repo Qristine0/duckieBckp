@@ -488,7 +488,7 @@ class SignBehaviorFSM:
         phase_a_settle = cl + cs
         phase_b_end = phase_a_settle + cl + cr
         phase_b_settle = phase_b_end + cs
-        phase_c_end = phase_b_settle + cl
+        phase_c_end = phase_b_settle + cl 
 
         # prev 0.05
         def is_stationary(offsets, threshold=0.05):
@@ -503,7 +503,7 @@ class SignBehaviorFSM:
 
         # Hold left and detect
         if c < phase_a_settle:
-            if c > phase_a_end + 4:
+            if c > phase_a_end + 8:
                 seen, offset = self._vehicle_detected(detections)
                 if seen:
                     self._vehicle_seen_left = True

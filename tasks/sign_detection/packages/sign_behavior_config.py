@@ -101,9 +101,9 @@ class SignBehaviorConfig:
         self.stopped_speed_threshold: float = kwargs.pop("stopped_speed_threshold", 0.055)
 
         # CHECKPATH sweep
-        self.check_left_frames: int = kwargs.pop("check_left_frames", 12)   
-        self.check_right_frames: int = kwargs.pop("check_right_frames", 8)   #prev 20
-        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.3)
+        self.check_left_frames: int = kwargs.pop("check_left_frames", 8)   
+        self.check_right_frames: int = kwargs.pop("check_right_frames", 5)   #prev 20
+        self.check_turn_speed: float = kwargs.pop("check_turn_speed", 0.4)
         self.check_settle_frames: int = kwargs.pop("check_settle_frames", 50)
 
         # POST_STOP
@@ -117,7 +117,7 @@ class SignBehaviorConfig:
 
         # Intersection manoeuvres
         self.intersect_forward_frames: int = kwargs.pop("intersect_forward_frames", 60)
-        self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 48)
+        self.intersect_left_frames: int = kwargs.pop("intersect_left_frames", 56)
         self.intersect_right_frames: int = kwargs.pop("intersect_right_frames", 25)
 
         # for new bot right needs more speed
