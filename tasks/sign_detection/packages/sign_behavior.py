@@ -452,7 +452,7 @@ class SignBehaviorFSM:
             self._turn_counter = self._elapsed_frames()
 
             if self._turn_counter < self._frames("post_stop_frames", 25):
-                return self._speed("post_stop_speed", 0.20), self._speed("post_stop_speed", 0.20)
+                return self._pair("post_stop_speed", (0.30, 0.36))
 
             self._finish_behavior()
             return base_left, base_right
